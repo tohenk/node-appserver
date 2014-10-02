@@ -105,22 +105,53 @@ var server = app.listen(app.get('port'), function() {
     console.log("Listening on port %d in %s mode", server.address().port, app.settings.env);
     console.log('');
 
-    run();
+    if (!run()) {
+        server.close();
+    }
 });
 
 // === socket.io implementation ===
 
 function run() {
-    if (process.env.NT_REPORT_CONFIG && fs.existsSync(process.env.NT_REPORT_CONFIG)) {
+    var cnt = 0;
+    if (process.env.NT_REPORT_CONFIG && fileExist(process.env.NT_REPORT_CONFIG)) {
         console.log('Using config file %s', process.env.NT_REPORT_CONFIG);
+        var configPath = path.dirname(process.env.NT_REPORT_CONFIG);
         var namespaces = JSON.parse(fs.readFileSync(process.env.NT_REPORT_CONFIG));
         for (index in namespaces) {
-            createReportServer(index, path.normalize(namespaces[index]));
+            var cli = findCLI(path.normalize(namespaces[index]), [__dirname, configPath]);
+            createReportServer(index, cli);
+            cnt++;
         }
     } else {
-        var cli = path.normalize([__dirname, '..', '..', '..', 'symfony'].join(path.sep));
+        if (process.env.NT_REPORT_CLI && fileExist(process.env.NT_REPORT_CLI)) {
+            var cli = process.env.NT_REPORT_CLI;
+        } else {
+            console.log('No CLI specified, please set environment variable NT_REPORT_CLI.');
+            return;
+        }
         createReportServer(null, cli);
+        cnt++;
     }
+
+    return cnt;
+}
+
+function fileExist(filename) {
+    return fs.existsSync(filename);
+}
+
+function findCLI(cli, paths) {
+    if (!fileExist(cli)) {
+        for (var i = 0; i < paths.length; i++) {
+            if (fileExist(path.normalize([paths[i], cli].join(path.sep)))) {
+                cli = path.normalize([paths[i], cli].join(path.sep))
+                break;
+            }
+        }
+    }
+
+    return cli;
 }
 
 function createReportServer(namespace, cli) {

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2012 Toha <tohenk@yahoo.com>
+ * Copyright (c) 2014 Toha <tohenk@yahoo.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
  * this software and associated documentation files (the "Software"), to deal in
@@ -35,49 +35,74 @@
 // === module dependencies ===
 
 var
-    express    = require('express'),
-    routes     = require('./routes'),
-    http       = require('http'),
-    path       = require('path'),
-    util       = require('util'),
-    spawn      = require('child_process').spawn,
-    app        = express(),
-    server     = http.createServer(app),
-    fs         = require('fs');
+    express      = require('express'),
+    path         = require('path'),
+    favicon      = require('serve-favicon'),
+    logger       = require('morgan'),
+    cookieParser = require('cookie-parser'),
+    bodyParser   = require('body-parser'),
+    routes       = require('./routes/index'),
+    fs           = require('fs'),
+    spawn        = require('child_process').spawn,
+    app          = express();
 
 // === variables ===
 
 var
-    php        = path.sep == '\\' ? 'php.exe' : 'php',
-    io         = null;
+    php          = path.sep == '\\' ? 'php.exe' : 'php',
+    io           = null;
 
 // === configuration ===
 
-app.configure(function() {
-    app.set('port', process.env.PORT || 81);
-    app.set('views', __dirname + '/views');
-    app.set('view engine', 'jade');
-    app.use(express.favicon());
-    app.use(express.logger('dev'));
-    app.use(express.bodyParser());
-    app.use(express.methodOverride());
-    app.use(app.router);
-    app.use(express.static(path.join(__dirname, 'public')));
-});
+app.set('port', process.env.PORT || 81);
+app.set('views', path.join(__dirname, 'views'));
+app.set('view engine', 'jade');
 
-app.configure('development', function() {
-    app.use(express.errorHandler());
-});
+//app.use(favicon(__dirname + '/public/favicon.ico'));
+app.use(logger('dev'));
+app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({extended: false}));
+app.use(cookieParser());
+app.use(express.static(path.join(__dirname, 'public')));
 
 // === routes ===
 
-app.get('/', routes.index);
+app.use('/', routes);
+
+// === error handlers ===
+
+// catch 404 and forward to error handler
+app.use(function(req, res, next) {
+    var err = new Error('Not Found');
+    err.status = 404;
+    next(err);
+});
+
+// development error handler
+if (app.get('env') === 'development') {
+    app.use(function(err, req, res, next) {
+        res.status(err.status || 500);
+        res.render('error', {
+            message: err.message,
+            error: err
+        });
+    });
+}
+
+// production error handler
+app.use(function(err, req, res, next) {
+    res.status(err.status || 500);
+    res.render('error', {
+        message: err.message,
+        error: {}
+    });
+});
 
 // === server initialization ===
 
-server.listen(app.get('port'), function() {
-    console.log('ntReport Server (c) 2012 Toha <tohenk@yahoo.com>');
-    console.log("Listening on port %d in %s mode", app.get('port'), app.settings.env);
+var server = app.listen(app.get('port'), function() {
+    console.log('ntReport Server (c) 2014 Toha <tohenk@yahoo.com>');
+    console.log("Listening on port %d in %s mode", server.address().port, app.settings.env);
     console.log('');
 
     run();
@@ -93,8 +118,8 @@ function run() {
             createReportServer(index, path.normalize(namespaces[index]));
         }
     } else {
-      var cli = path.normalize([__dirname, '..', '..', '..', 'symfony'].join(path.sep));
-      createReportServer(null, cli);
+        var cli = path.normalize([__dirname, '..', '..', '..', 'symfony'].join(path.sep));
+        createReportServer(null, cli);
     }
 }
 

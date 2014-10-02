@@ -1,0 +1,4 @@
+{
+    "myapp": "/path/to/symfony/cli",
+    "myapp2": "/path/to/another/symfony/cli"
+}

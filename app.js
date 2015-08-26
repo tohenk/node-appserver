@@ -65,9 +65,30 @@ var
 cmdRegisterBoolArg('help', 'h', 'Show program usage');
 cmdRegisterVarArg('port', 'p', 'Specify server listen port, default is port 81');
 cmdRegisterVarArg('config', 'c', 'Read report configuration from file');
+cmdRegisterBoolArg('secure', 's', 'Use HTTPS server');
+cmdRegisterVarArg('ssl-key', '', 'Set SSL private key');
+cmdRegisterVarArg('ssl-cert', '', 'Set SSL public key');
+cmdRegisterVarArg('ssl-ca', '', 'Set SSL CA key');
 
 if (!parseArgs() || (cmdGetArg('help') && usage())) {
     process.exit();
+}
+
+// validate secure server
+if (cmdGetArg('secure')) {
+    var err = null;
+    if (!cmdGetArg('ssl-key') || !fileExist(cmdGetArg('ssl-key'))) {
+        err = 'No SSL private key supplied or file not found.';
+    } else if (!cmdGetArg('ssl-cert') || !fileExist(cmdGetArg('ssl-cert'))) {
+        err = 'No SSL public key supplied or file not found.';
+    } else if (cmdGetArg('ssl-ca') && !fileExist(cmdGetArg('ssl-ca'))) {
+        err = 'SSL CA key file not found.';
+    }
+    if (err) {
+        console.log(err);
+        console.log('');
+        process.exit();
+    }
 }
 
 // === configuration ===
@@ -118,15 +139,33 @@ app.use(function(err, req, res, next) {
 
 // === server initialization ===
 
-var server = app.listen(app.get('port'), function() {
+var server;
+var f = function() {
     console.log('ntReport Server (c) 2014-2015 Toha <tohenk@yahoo.com>');
-    console.log("Listening on port %d in %s mode", server.address().port, app.settings.env);
+    console.log("%s server listening on port %d (%s)", cmdGetArg('secure') ? 'HTTPS' : 'HTTP', server.address().port, app.settings.env);
     console.log('');
 
     if (!run()) {
         server.close();
     }
-});
+}
+
+if (cmdGetArg('secure')) {
+    var options = {
+        key: fs.readFileSync(cmdGetArg('ssl-key')),
+        cert: fs.readFileSync(cmdGetArg('ssl-cert'))
+    };
+    if (cmdGetArg('ssl-ca')) {
+        options.ca = fs.readFileSync(cmdGetArg('ssl-ca'));
+    }
+    var https = require('https');
+    server = https.createServer(options, app);
+} else {
+    var http = require('http');
+    server = http.createServer(app);
+}
+
+server.listen(app.get('port'), f);
 
 // === socket.io implementation ===
 

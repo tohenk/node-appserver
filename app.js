@@ -232,13 +232,17 @@ function createReportListener(server, namespace, cli, param) {
     s.on('connection', function(socket) {
         socket.on('report', function(data) {
             console.log('%s: Generating report %s...', socket.id, data.hash);
-            var param = param ? param : 'ntreport:generate --application=%APP% --env=%ENV% %REPORTID%';
-            var param = trans(param, {
+            var values = {
                 'APP': 'frontend',
                 'ENV': app.settings.env == 'development' ? 'dev' : 'prod',
                 'REPORTID': data.hash
+            };
+            var param = param ? param : ['ntreport:generate', '--application=%APP%', '--env=%ENV%', '%REPORTID%'];
+            var arg = ['-f', cli, '--'];
+            param.forEach(function(v) {
+                arg.push(trans(v, values));
             });
-            var p = spawn(php, ['-f', cli, '--', param]);
+            var p = spawn(php, arg);
             p.on('exit', function(code) {
                 console.log('%s: %s status is %s...', socket.id, data.hash, code);
                 socket.emit('done', {code: code});
@@ -436,7 +440,13 @@ function usage() {
     console.log('    "myapp2": {');
     console.log('        "cli": "/path/to/another/report/cli",');
     console.log('        "secure": true,');
-    console.log('        "port": 8081');
+    console.log('        "port": 8081,');
+    console.log('        "param": [');
+    console.log('            "ntreport:generate",');
+    console.log('            "--app=%APP%",');
+    console.log('            "--env=%ENV%",');
+    console.log('            "%REPORTID%"');
+    console.log('        "]');
     console.log('    }');
     console.log('}');
     console.log('');

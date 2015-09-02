@@ -56,14 +56,14 @@ var
 
 var
     php          = path.sep == '\\' ? 'php.exe' : 'php',
-    io           = null,
     args         = process.argv.slice(2),
-    params       = {};
+    params       = {},
+    servers      = {};
 
 // === command line arguments ===
 
 cmdRegisterBoolArg('help', 'h', 'Show program usage');
-cmdRegisterVarArg('port', 'p', 'Specify server listen port, default is port 81');
+cmdRegisterVarArg('port', 'p', 'Specify server listen port, default is port 8080');
 cmdRegisterVarArg('config', 'c', 'Read report configuration from file');
 cmdRegisterBoolArg('secure', 's', 'Use HTTPS server');
 cmdRegisterVarArg('ssl-key', '', 'Set SSL private key');
@@ -74,26 +74,9 @@ if (!parseArgs() || (cmdGetArg('help') && usage())) {
     process.exit();
 }
 
-// validate secure server
-if (cmdGetArg('secure')) {
-    var err = null;
-    if (!cmdGetArg('ssl-key') || !fileExist(cmdGetArg('ssl-key'))) {
-        err = 'No SSL private key supplied or file not found.';
-    } else if (!cmdGetArg('ssl-cert') || !fileExist(cmdGetArg('ssl-cert'))) {
-        err = 'No SSL public key supplied or file not found.';
-    } else if (cmdGetArg('ssl-ca') && !fileExist(cmdGetArg('ssl-ca'))) {
-        err = 'SSL CA key file not found.';
-    }
-    if (err) {
-        console.log(err);
-        console.log('');
-        process.exit();
-    }
-}
-
 // === configuration ===
 
-app.set('port', cmdGetArg('port') || process.env.PORT || 81);
+app.set('port', cmdGetArg('port') || process.env.PORT || 8080);
 app.set('views', path.join(__dirname, 'views'));
 app.set('view engine', 'jade');
 
@@ -137,39 +120,15 @@ app.use(function(err, req, res, next) {
     });
 });
 
-// === server initialization ===
-
-var server;
-var f = function() {
-    console.log('ntReport Server (c) 2014-2015 Toha <tohenk@yahoo.com>');
-    console.log("%s server listening on port %d (%s)", cmdGetArg('secure') ? 'HTTPS' : 'HTTP', server.address().port, app.settings.env);
-    console.log('');
-
-    if (!run()) {
-        server.close();
-    }
-}
-
-if (cmdGetArg('secure')) {
-    var options = {
-        key: fs.readFileSync(cmdGetArg('ssl-key')),
-        cert: fs.readFileSync(cmdGetArg('ssl-cert'))
-    };
-    if (cmdGetArg('ssl-ca')) {
-        options.ca = fs.readFileSync(cmdGetArg('ssl-ca'));
-    }
-    var https = require('https');
-    server = https.createServer(options, app);
-} else {
-    var http = require('http');
-    server = http.createServer(app);
-}
-
-server.listen(app.get('port'), f);
+run();
 
 // === socket.io implementation ===
 
 function run() {
+    console.log('ntReport Server (c) 2014-2015 Toha <tohenk@yahoo.com>');
+    console.log('Running for %s environment...', app.settings.env);
+    console.log('');
+
     var cnt = 0;
     var cfg = cmdGetArg('config') || process.env.NT_REPORT_CONFIG;
     if (cfg && fileExist(cfg)) {
@@ -177,8 +136,14 @@ function run() {
         var configPath = path.dirname(cfg);
         var namespaces = JSON.parse(fs.readFileSync(cfg));
         for (index in namespaces) {
-            var cli = findCLI(path.normalize(namespaces[index]), [__dirname, configPath]);
-            createReportServer(index, cli);
+            var options = namespaces[index];
+            if (typeof options == 'object') {
+                var cli = findCLI(path.normalize(options.cli), [__dirname, configPath]);
+            } else {
+                var cli = findCLI(path.normalize(options), [__dirname, configPath]);
+            }
+            var server = createServer(options);
+            createReportListener(server, index, cli, options.param);
             cnt++;
         }
     } else {
@@ -188,38 +153,92 @@ function run() {
             console.log('No CLI specified, please set environment variable NT_REPORT_CLI.');
             return;
         }
-        createReportServer(null, cli);
+        var server = createServer();
+        createReportListener(server, null, cli);
         cnt++;
     }
+    console.log('');
 
     return cnt;
 }
 
-function fileExist(filename) {
-    return fs.existsSync(filename);
-}
+// === server initialization ===
 
-function findCLI(cli, paths) {
-    if (!fileExist(cli)) {
-        for (var i = 0; i < paths.length; i++) {
-            if (fileExist(path.normalize([paths[i], cli].join(path.sep)))) {
-                cli = path.normalize([paths[i], cli].join(path.sep))
-                break;
-            }
+function createServer(options) {
+    var server;
+    var port = options.port || app.get('port');
+    var secure = options.secure || cmdGetArg('secure');
+
+    // check instance in server pool
+    if (servers[port]) {
+        if (servers[port]['secure'] != secure) {
+            throw new Error('Can\'t recreate server on port ' + port + '.');
+        }
+
+        return servers[port]['server'];
+    }
+
+    // validate secure server
+    if (secure) {
+        var err = null;
+        if (!cmdGetArg('ssl-key') || !fileExist(cmdGetArg('ssl-key'))) {
+            err = 'No SSL private key supplied or file not found.';
+        } else if (!cmdGetArg('ssl-cert') || !fileExist(cmdGetArg('ssl-cert'))) {
+            err = 'No SSL public key supplied or file not found.';
+        } else if (cmdGetArg('ssl-ca') && !fileExist(cmdGetArg('ssl-ca'))) {
+            err = 'SSL CA key file not found.';
+        }
+        if (err) {
+            throw new Error(err);
         }
     }
 
-    return cli;
+    var f = function() {
+        console.log("%s server listening on port %d...", secure ? 'HTTPS' : 'HTTP', server.address().port);
+
+        if (typeof options.callback == 'function') {
+            options.callback(server);
+        }
+    }
+
+    if (secure) {
+        var c = {
+            key: fs.readFileSync(cmdGetArg('ssl-key')),
+            cert: fs.readFileSync(cmdGetArg('ssl-cert'))
+        };
+        if (cmdGetArg('ssl-ca')) {
+            c.ca = fs.readFileSync(cmdGetArg('ssl-ca'));
+        }
+        var https = require('https');
+        server = https.createServer(c, app);
+    } else {
+        var http = require('http');
+        server = http.createServer(app);
+    }
+    server.listen(port, f);
+    servers[port] = {
+        port: port,
+        secure: secure,
+        server: server
+    }
+
+    return server;
 }
 
-function createReportServer(namespace, cli) {
+function createReportListener(server, namespace, cli, param) {
     console.log("Serving \"%s\" using %s.", namespace ? namespace : 'GLOBAL', cli);
-    var _io = createSocketIo();
+    var _io = createSocketIo(server);
     var s = namespace ? _io.of('/' + namespace) : _io.sockets; 
     s.on('connection', function(socket) {
         socket.on('report', function(data) {
             console.log('%s: Generating report %s...', socket.id, data.hash);
-            var p = spawn(php, ['-f', cli, '--', 'ntreport:generate', '--application=frontend', '--env=' + (app.settings.env == 'development' ? 'dev' : 'prod'), data.hash]);
+            var param = param ? param : 'ntreport:generate --application=%APP% --env=%ENV% %REPORTID%';
+            var param = trans(param, {
+                'APP': 'frontend',
+                'ENV': app.settings.env == 'development' ? 'dev' : 'prod',
+                'REPORTID': data.hash
+            });
+            var p = spawn(php, ['-f', cli, '--', param]);
             p.on('exit', function(code) {
                 console.log('%s: %s status is %s...', socket.id, data.hash, code);
                 socket.emit('done', {code: code});
@@ -245,12 +264,42 @@ function createReportServer(namespace, cli) {
     return s;
 }
 
-function createSocketIo() {
+function createSocketIo(server) {
+    if (!server) {
+        throw new Error('Socket IO need a server to be assigned.');
+    }
+    var io = null;
+    var port = server.address().port;
+    if (servers[port]) {
+        io = servers[port]['io'];
+    }
     if (!io) {
         io = require('socket.io').listen(server);
     }
+    if (!servers[port]['io']) {
+        servers[port]['io'] = io;
+    }
 
     return io;
+}
+
+// === common helper ===
+
+function findCLI(cli, paths) {
+    if (!fileExist(cli)) {
+        for (var i = 0; i < paths.length; i++) {
+            if (fileExist(path.normalize([paths[i], cli].join(path.sep)))) {
+                cli = path.normalize([paths[i], cli].join(path.sep))
+                break;
+            }
+        }
+    }
+
+    return cli;
+}
+
+function fileExist(filename) {
+    return fs.existsSync(filename);
 }
 
 function cleanBuffer(buffer) {
@@ -259,6 +308,15 @@ function cleanBuffer(buffer) {
     }
 
     return buffer.trim();
+}
+
+function trans(str, vars) {
+    for (var n in vars) {
+        var re = '%' + n + '%';
+        str = str.replace(re, vars[n]);
+    }
+
+    return str;
 }
 
 // === command line helper ===
@@ -356,15 +414,31 @@ function parseArgs() {
 
 function usage() {
     console.log('Usage:');
-    console.log(' ' + process.argv[1] + ' [options]');
+    console.log('  node %s [options]', path.basename(process.argv[1]));
     console.log('');
     console.log('Options:');
-    console.log('--port=port, -p=port       Set the server port, default to 81 if not specified');
-    console.log('--config=file, -c=file     Read report configuration from file');
+    console.log('--port=port, -p=port     Set the server port, default to 8080 if not specified');
+    console.log('--config=file, -c=file   Read report configuration from file');
+    console.log('--secure                 Use HTTPS server as default');
+    console.log('--ssl-key=file           Set SSL private key for HTTPS server');
+    console.log('--ssl-cert=file          Set SSL public key for HTTPS server');
+    console.log('--ssl-ca=file            Set SSL CA public key for HTTPS server');
     console.log('');
     console.log('Alternativelly, report configuration file can be passed using environment');
     console.log('variable NT_REPORT_CONFIG, or for a single usage report serving, pass');
     console.log('NT_REPORT_CLI instead.');
+    console.log('');
+    console.log('Report configuration expect a JSON file format.');
+    console.log('The content of configuration shown as following example:');
+    console.log('');
+    console.log('{');
+    console.log('    "myapp": "/path/to/report/cli",');
+    console.log('    "myapp2": {');
+    console.log('        "cli": "/path/to/another/report/cli",');
+    console.log('        "secure": true,');
+    console.log('        "port": 8081');
+    console.log('    }');
+    console.log('}');
     console.log('');
 
     return true;

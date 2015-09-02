@@ -1,4 +1,8 @@
 {
-    "myapp": "/path/to/symfony/cli",
-    "myapp2": "/path/to/another/symfony/cli"
+    "myapp": "/path/to/report/cli",
+    "myapp2": {
+        "cli": "/path/to/another/report/cli",
+        "secure": true,
+        "port": 8081
+    }
 }

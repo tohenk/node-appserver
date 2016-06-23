@@ -1,5 +1,5 @@
 @echo off
-title ntReport Server
+title Node.js App Server
 
 %~d0
 cd %~dp0

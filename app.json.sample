@@ -1,0 +1,15 @@
+{
+    "myapp": {
+        "title": "MyApp that is doing something (Unsecure)",
+        "module": "./../app/myapp",
+        "secure": false,
+        "port": 8080,
+        "path": null,
+        "params": {
+            "something": {
+                "cli": "/path/to/cli"
+            },
+            "other": "/path/to/other/cli"
+        }
+    }
+}

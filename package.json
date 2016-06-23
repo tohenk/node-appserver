@@ -1,5 +1,5 @@
 {
-    "ntreport-server": "ntReport Server",
+    "node-appserver": "Node.js App Server",
     "version": "1.0.0",
     "private": true,
     "dependencies": {

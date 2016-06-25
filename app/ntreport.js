@@ -26,17 +26,21 @@ var php   = path.sep == '\\' ? 'php.exe' : 'php';
 
 module.exports = exports = ReportServer;
 
-function ReportServer(appserver, socket, options) {
+function ReportServer(appserver, socketFactory, logger, options) {
     var app = {
         appserver: appserver,
         util: appserver.util,
+        logger: logger,
         options: options || {},
+        log: function(...args) {
+            if (args.length) args[0] = this.util.formatDate(new Date(), '[yyyy-MM-dd HH:mm:ss.zzz]') + ' ' + args[0];
+            this.logger.log.apply(null, args);
+        },
         listen: function(socket, cli, param) {
             var self = this;
             socket.on('connection', function(client) {
-                console.log('%s: Client connected...', client.id);
                 client.on('report', function(data) {
-                    console.log('%s: Generating report %s...', client.id, data.hash);
+                    self.log('%s: Generating report %s...', client.id, data.hash);
                     var values = {
                         'APP': 'frontend',
                         'ENV': self.appserver.app.settings.env == 'development' ? 'dev' : 'prod',
@@ -49,12 +53,12 @@ function ReportServer(appserver, socket, options) {
                     });
                     var p = spawn(php, arg);
                     p.on('exit', function(code) {
-                        console.log('%s: %s status is %s...', client.id, data.hash, code);
+                        self.log('%s: %s status is %s...', client.id, data.hash, code);
                         client.emit('done', {code: code});
                     });
                     p.stdout.on('data', function(line) {
                         var line = self.util.cleanBuffer(line);
-                        console.log('%s: %s', client.id, line);
+                        self.log('%s: %s', client.id, line);
                         // monitor progress
                         var re = /Progress\:\s+(\d+)\%/g;
                         var matches = re.exec(line);
@@ -65,7 +69,7 @@ function ReportServer(appserver, socket, options) {
                     });
                     p.stderr.on('data', function(line) {
                         var line = self.util.cleanBuffer(line);
-                        console.log('%s: %s', client.id, line);
+                        self.log('%s: %s', client.id, line);
                     });
                 });
             });
@@ -81,7 +85,7 @@ function ReportServer(appserver, socket, options) {
                 } else {
                     var cli = this.util.findCLI(path.normalize(config), [__dirname, configPath]);
                 }
-                this.listen(socket(ns), cli, param);
+                this.listen(socketFactory(ns), cli, param);
                 console.log('Serving %s using %s...', ns, cli);
             }
         }

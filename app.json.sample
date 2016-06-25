@@ -6,6 +6,7 @@
         "secure": false,
         "port": 8080,
         "path": null,
+        "logdir": "logs",
         "params": {
             "something": {
                 "cli": "/path/to/cli"

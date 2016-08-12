@@ -32,7 +32,8 @@ function ReportServer(appserver, socketFactory, logger, options) {
         util: appserver.util,
         logger: logger,
         options: options || {},
-        log: function(...args) {
+        log: function() {
+            var args = Array.from(arguments);
             if (args.length) args[0] = this.util.formatDate(new Date(), '[yyyy-MM-dd HH:mm:ss.zzz]') + ' ' + args[0];
             this.logger.log.apply(null, args);
         },

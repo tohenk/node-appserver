@@ -21,8 +21,6 @@
  */
 
 var path  = require('path');
-var spawn = require('child_process').spawn;
-var php   = path.sep == '\\' ? 'php.exe' : 'php';
 
 module.exports = exports = ReportServer;
 
@@ -37,22 +35,39 @@ function ReportServer(appserver, socketFactory, logger, options) {
             if (args.length) args[0] = this.util.formatDate(new Date(), '[yyyy-MM-dd HH:mm:ss.zzz]') + ' ' + args[0];
             this.logger.log.apply(null, args);
         },
-        listen: function(socket, cli, param) {
+        findCLI: function(cli) {
             var self = this;
+            var configPath = path.dirname(self.appserver.config);
+            return self.util.findCLI(path.normalize(cli), [__dirname, configPath]);
+        },
+        listen: function(ns, socket, params) {
+            var self = this;
+            var bin = null;
+            var args = null;
+            var defaultArgs = ['-f', '%CLI%', '--', 'ntreport:generate', '--application=%APP%', '--env=%ENV%', '%REPORTID%'];
+            var values = {
+                'APP': 'frontend',
+                'ENV': self.appserver.app.settings.env == 'development' ? 'dev' : 'prod'
+            };
+            // params is cli itself
+            if (typeof params == 'string') {
+                values.CLI = self.findCLI(params);
+            }
+            // params is array (bin, cli, and args)
+            if (typeof params == 'object') {
+                if (params.bin) bin = params.bin;
+                if (params.cli) values.CLI = self.findCLI(params.cli);
+                if (typeof params.args != 'undefined') args = Array.from(params.args);
+            }
+            // show information
+            console.log('Serving %s...', ns);
+            if (values.CLI) console.log('Using CLI %s...', values.CLI);
+            // handle socket
             socket.on('connection', function(client) {
                 client.on('report', function(data) {
                     self.log('%s: Generating report %s...', client.id, data.hash);
-                    var values = {
-                        'APP': 'frontend',
-                        'ENV': self.appserver.app.settings.env == 'development' ? 'dev' : 'prod',
-                        'REPORTID': data.hash
-                    };
-                    var param = param ? param : ['ntreport:generate', '--application=%APP%', '--env=%ENV%', '%REPORTID%'];
-                    var arg = ['-f', cli, '--'];
-                    param.forEach(function(v) {
-                        arg.push(self.util.trans(v, values));
-                    });
-                    var p = spawn(php, arg);
+                    values.REPORTID = data.hash;
+                    var p = self.util.exec(bin ? bin : 'php', args ? args : defaultArgs, values);
                     p.on('exit', function(code) {
                         self.log('%s: %s status is %s...', client.id, data.hash, code);
                         client.emit('done', {code: code});
@@ -76,18 +91,8 @@ function ReportServer(appserver, socketFactory, logger, options) {
             });
         },
         init: function() {
-            var configPath = path.dirname(this.appserver.config);
             for (var ns in this.options) {
-                var config = this.options[ns];
-                var param = null;
-                if (typeof config == 'object' && config.cli) {
-                    var cli = this.util.findCLI(path.normalize(config.cli), [__dirname, configPath]);
-                    if (config.param) param = config.param;
-                } else {
-                    var cli = this.util.findCLI(path.normalize(config), [__dirname, configPath]);
-                }
-                this.listen(socketFactory(ns), cli, param);
-                console.log('Serving %s using %s...', ns, cli);
+                this.listen(ns, socketFactory(ns), this.options[ns]);
             }
         }
     }

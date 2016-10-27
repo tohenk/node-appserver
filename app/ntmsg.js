@@ -44,6 +44,11 @@ function MessagingServer(appserver, socketFactory, logger, options) {
             if (args.length) args[0] = this.util.formatDate(new Date(), '[yyyy-MM-dd HH:mm:ss.zzz]') + ' ' + args[0];
             this.logger.log.apply(null, args);
         },
+        error: function() {
+            var args = Array.from(arguments);
+            if (args.length) args[0] = this.util.formatDate(new Date(), '[yyyy-MM-dd HH:mm:ss.zzz]') + ' ' + args[0];
+            this.logger.error.apply(null, args);
+        },
         findCLI: function(cli) {
             var self = this;
             var configPath = path.dirname(self.appserver.config);
@@ -70,7 +75,8 @@ function MessagingServer(appserver, socketFactory, logger, options) {
             if (null == self.textClient) {
                 var params = self.options['text-server'];
                 params.log = function() {
-                    self.log.apply(self, Array.from(arguments));
+                    // use error log for text server logs
+                    self.error.apply(self, Array.from(arguments));
                 }
                 if (typeof self.options['text-client'] != 'undefined') {
                     var config = self.options['text-client'];
@@ -92,14 +98,14 @@ function MessagingServer(appserver, socketFactory, logger, options) {
                         if (typeof config.args != 'undefined') args = Array.from(config.args);
                     }
                     if (values.CLI) console.log('Text client CLI %s...', values.CLI);
-                    params.delivered = function(date, hash, code) {
-                        self.log('%s: message %s status is %s', date, hash, code);
+                    params.delivered = function(hash, number, code, sent, received) {
+                        self.log('%s: Delivery status for %s is %s', hash, number, code);
                         values.CMD = 'DELV';
-                        values.DATA = JSON.stringify({date: date, hash: hash, code: code});
+                        values.DATA = JSON.stringify({hash: hash, number: number, code: code, sent: sent, received: received});
                         self.execCLI(bin ? bin : 'php', args ? args : defaultArgs, values);
                     }
                     params.message = function(date, number, message, hash) {
-                        self.log('%s: New message from %s', date, number);
+                        self.log('%s: New message from %s', hash, number);
                         values.CMD = 'MESG';
                         values.DATA = JSON.stringify({date: date, number: number, message: message, hash: hash});
                         self.execCLI(bin ? bin : 'php', args ? args : defaultArgs, values);
@@ -150,7 +156,12 @@ function MessagingServer(appserver, socketFactory, logger, options) {
             });
             socket.on('notify', function(data) {
                 self.log('%s: [Server] New notification for %s...', socket.id, data.uid);
-                self.io.to(data.uid).emit('notification');
+                var notif = {
+                    message: data.message
+                }
+                if (data.code) notif.code = data.code;
+                if (data.referer) notif.referer = data.referer;
+                self.io.to(data.uid).emit('notification', notif);
             });
             socket.on('message', function(data) {
                 self.log('%s: [Server] New message for %s...', socket.id, data.uid);
@@ -164,6 +175,17 @@ function MessagingServer(appserver, socketFactory, logger, options) {
             });
         },
         handleClientCon: function(socket) {
+            var self = this;
+            socket.on('notification-read', function(data) {
+                if (data.uid) {
+                    self.io.to(data.uid).emit('notification-read', data);
+                }
+            });
+            socket.on('message-sent', function(data) {
+                if (data.uid) {
+                    self.io.to(data.uid).emit('message-sent', data);
+                }
+            });
         },
         setupCon: function(socket) {
             var self = this;
@@ -183,6 +205,8 @@ function MessagingServer(appserver, socketFactory, logger, options) {
                         socket.join(self.serverRoom);
                         self.handleServerCon(socket);
                         self.log('%s: Server connected...', socket.id);
+                    } else {
+                        self.log('%s: Server didn\'t send correct key...', socket.id);
                     }
                 } else if (data.uid) {
                     dismiss = false;
@@ -193,9 +217,12 @@ function MessagingServer(appserver, socketFactory, logger, options) {
                     // notify other users someone is online
                     self.io.emit('user-online', data.uid);
                     self.log('%s: User %s connected...', socket.id, data.uid);
+                } else {
+                    self.log('%s: Invalid registration...', socket.id, data.uid);
                 }
                 if (dismiss) {
                     socket.disconnect(true);
+                    self.log('%s: Forced disconnect...', socket.id);
                 } else {
                     self.addSocket(socket, info);
                     clearTimeout(t);

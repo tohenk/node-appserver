@@ -39,6 +39,7 @@ function MessagingServer(appserver, socketFactory, logger, options) {
         registerTimeout: 60,
         serverRoom: 'server',
         textClient: null,
+        textCLI: null,
         log: function() {
             var args = Array.from(arguments);
             if (args.length) args[0] = this.util.formatDate(new Date(), '[yyyy-MM-dd HH:mm:ss.zzz]') + ' ' + args[0];
@@ -49,14 +50,29 @@ function MessagingServer(appserver, socketFactory, logger, options) {
             if (args.length) args[0] = this.util.formatDate(new Date(), '[yyyy-MM-dd HH:mm:ss.zzz]') + ' ' + args[0];
             this.logger.error.apply(null, args);
         },
-        findCLI: function(cli) {
+        getCliPaths: function() {
             var self = this;
-            var configPath = path.dirname(self.appserver.config);
-            return self.util.findCLI(path.normalize(cli), [__dirname, configPath]);
+            return [__dirname, path.dirname(self.appserver.config)];
         },
-        execCLI: function(bin, args, values) {
+        getTextCLI: function(config) {
             var self = this;
-            var p = self.util.exec(bin, args, values);
+            if (self.textCLI == null) {
+                self.textCLI = require('../lib/cli')({
+                    paths: self.getCliPaths(),
+                    args: ['ntucp:messaging', '--application=%APP%', '--env=%ENV%', '%CMD%', '%DATA%'],
+                    values: {
+                        'APP': 'frontend',
+                        'ENV': self.appserver.app.settings.env == 'development' ? 'dev' : 'prod'
+                    }
+                });
+                self.textCLI.init(config);
+                if (self.textCLI.values.CLI) console.log('Text client CLI %s...', self.textCLI.values.CLI);
+            }
+            return self.textCLI;
+        },
+        execCLI: function(cli, values) {
+            var self = this;
+            var p = cli.exec(values);
             p.on('exit', function(code) {
                 self.log('Result %s...', code);
             });
@@ -79,36 +95,20 @@ function MessagingServer(appserver, socketFactory, logger, options) {
                     self.error.apply(self, Array.from(arguments));
                 }
                 if (typeof self.options['text-client'] != 'undefined') {
-                    var config = self.options['text-client'];
-                    var bin = null;
-                    var args = null;
-                    var defaultArgs = ['-f', '%CLI%', '--', 'ntucp:messaging', '--application=%APP%', '--env=%ENV%', '%CMD%', '%DATA%'];
-                    var values = {
-                        'APP': 'frontend',
-                        'ENV': self.appserver.app.settings.env == 'development' ? 'dev' : 'prod'
-                    };
-                    // params is cli itself
-                    if (typeof config == 'string') {
-                        values.CLI = self.findCLI(config);
-                    }
-                    // params is array (bin, cli, and args)
-                    if (typeof config == 'object') {
-                        if (config.bin) bin = config.bin;
-                        if (config.cli) values.CLI = self.findCLI(config.cli);
-                        if (typeof config.args != 'undefined') args = Array.from(config.args);
-                    }
-                    if (values.CLI) console.log('Text client CLI %s...', values.CLI);
+                    var cli = self.getTextCLI(self.options['text-client']);
                     params.delivered = function(hash, number, code, sent, received) {
                         self.log('%s: Delivery status for %s is %s', hash, number, code);
-                        values.CMD = 'DELV';
-                        values.DATA = JSON.stringify({hash: hash, number: number, code: code, sent: sent, received: received});
-                        self.execCLI(bin ? bin : 'php', args ? args : defaultArgs, values);
+                        self.execCLI(cli, {
+                            CMD: 'DELV',
+                            DATA: JSON.stringify({hash: hash, number: number, code: code, sent: sent, received: received})
+                        });
                     }
                     params.message = function(date, number, message, hash) {
                         self.log('%s: New message from %s', hash, number);
-                        values.CMD = 'MESG';
-                        values.DATA = JSON.stringify({date: date, number: number, message: message, hash: hash});
-                        self.execCLI(bin ? bin : 'php', args ? args : defaultArgs, values);
+                        self.execCLI(cli, {
+                            CMD: 'MESG',
+                            DATA: JSON.stringify({date: date, number: number, message: message, hash: hash})
+                        });
                     }
                 }
                 self.textClient = new client.connect(params);

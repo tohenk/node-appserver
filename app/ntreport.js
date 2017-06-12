@@ -43,7 +43,7 @@ function ReportServer(appserver, socketFactory, logger, options) {
                 args: ['ntreport:generate', '--application=%APP%', '--env=%ENV%', '%REPORTID%'],
                 values: {
                     'APP': 'frontend',
-                    'ENV': self.appserver.app.settings.env == 'development' ? 'dev' : 'prod'
+                    'ENV': typeof v8debug == 'object' ? 'dev' : 'prod'
                 }
             });
             cli.init(params);

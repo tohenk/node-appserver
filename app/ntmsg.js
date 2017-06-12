@@ -40,6 +40,8 @@ function MessagingServer(appserver, socketFactory, logger, options) {
         serverRoom: 'server',
         textClient: null,
         textCLI: null,
+        emailCLI: null,
+        userNotifierCLI: null,
         log: function() {
             var args = Array.from(arguments);
             if (args.length) args[0] = this.util.formatDate(new Date(), '[yyyy-MM-dd HH:mm:ss.zzz]') + ' ' + args[0];
@@ -62,13 +64,45 @@ function MessagingServer(appserver, socketFactory, logger, options) {
                     args: ['ntucp:messaging', '--application=%APP%', '--env=%ENV%', '%CMD%', '%DATA%'],
                     values: {
                         'APP': 'frontend',
-                        'ENV': self.appserver.app.settings.env == 'development' ? 'dev' : 'prod'
+                        'ENV': typeof v8debug == 'object' ? 'dev' : 'prod'
                     }
                 });
                 self.textCLI.init(config);
                 if (self.textCLI.values.CLI) console.log('Text client CLI %s...', self.textCLI.values.CLI);
             }
             return self.textCLI;
+        },
+        getEmailCLI: function(config) {
+            var self = this;
+            if (self.emailCLI == null) {
+                self.emailCLI = require('../lib/cli')({
+                    paths: self.getCliPaths(),
+                    args: ['ntucp:deliver-email', '--application=%APP%', '--env=%ENV%', '%HASH%'],
+                    values: {
+                        'APP': 'frontend',
+                        'ENV': typeof v8debug == 'object' ? 'dev' : 'prod'
+                    }
+                });
+                self.emailCLI.init(config);
+                if (self.emailCLI.values.CLI) console.log('Email delivery using %s...', self.emailCLI.values.CLI);
+            }
+            return self.emailCLI;
+        },
+        getUserNotifierCLI: function(config) {
+            var self = this;
+            if (self.userNotifierCLI == null) {
+                self.userNotifierCLI = require('../lib/cli')({
+                    paths: self.getCliPaths(),
+                    args: ['ntucp:signin-notify', '--application=%APP%', '--env=%ENV%', '%ACTION%', '%DATA%'],
+                    values: {
+                        'APP': 'frontend',
+                        'ENV': typeof v8debug == 'object' ? 'dev' : 'prod'
+                    }
+                });
+                self.userNotifierCLI.init(config);
+                if (self.userNotifierCLI.values.CLI) console.log('Signin notifier using %s...', self.userNotifierCLI.values.CLI);
+            }
+            return self.userNotifierCLI;
         },
         execCLI: function(cli, values) {
             var self = this;
@@ -114,11 +148,34 @@ function MessagingServer(appserver, socketFactory, logger, options) {
                 self.textClient = new client.connect(params);
             }
         },
+        deliverEmail: function(hash) {
+            var self = this;
+            if (typeof self.options['email-sender'] != 'undefined') {
+                var cli = self.getEmailCLI(self.options['email-sender']);
+                self.execCLI(cli, {
+                    HASH: hash
+                });
+            }
+        },
+        notifySignin: function(action, data) {
+            var self = this;
+            if (typeof self.options['user-notifier'] != 'undefined') {
+                var cli = self.getUserNotifierCLI(self.options['user-notifier']);
+                self.execCLI(cli, {
+                    ACTION: action,
+                    DATA: JSON.stringify(data)
+                });
+            }
+        },
         getUsers: function() {
             var users = [];
+            var uids = [];
             for (id in Sockets) {
                 if (Sockets[id].type == this.CON_CLIENT) {
-                    users.push({uid: Sockets[id].uid, time: Sockets[id].time});
+                    if (uids.indexOf(Sockets[id].uid) < 0) {
+                        users.push({uid: Sockets[id].uid, time: Sockets[id].time});
+                        uids.push(Sockets[id].uid);
+                    }
                 }
             }
             return users;
@@ -152,7 +209,11 @@ function MessagingServer(appserver, socketFactory, logger, options) {
             var self = this;
             socket.on('whos-online', function() {
                 self.log('%s: [Server] Query whos-online...', socket.id);
-                socket.emit('whos-online', self.getUsers());
+                var users = self.getUsers();
+                socket.emit('whos-online', users);
+                for (var i = 0; i < users.length; i++) {
+                    self.log('%s: [Server] User: %s, time: %d', socket.id, users[i].uid, users[i].time);
+                }
             });
             socket.on('notify', function(data) {
                 self.log('%s: [Server] New notification for %s...', socket.id, data.uid);
@@ -172,6 +233,18 @@ function MessagingServer(appserver, socketFactory, logger, options) {
                 if (self.textClient) {
                     self.textClient.sendText(data.number, data.message, data.hash);
                 }
+            });
+            socket.on('deliver-email', function(data) {
+                self.log('%s: [Server] Deliver email %s...', socket.id, data.hash);
+                self.deliverEmail(data.hash);
+            });
+            socket.on('user-signin', function(data) {
+                self.log('%s: [Server] User signin %s...', socket.id, data.username);
+                self.notifySignin('SIGNIN', data);
+            });
+            socket.on('user-signout', function(data) {
+                self.log('%s: [Server] User signout %s...', socket.id, data.username);
+                self.notifySignin('SIGNOUT', data);
             });
         },
         handleClientCon: function(socket) {

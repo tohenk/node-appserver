@@ -20,6 +20,7 @@
  * SOFTWARE.
  */
 
+var fs    = require('fs');
 var path  = require('path');
 var client = require('../lib/ntgw.client');
 
@@ -146,6 +147,14 @@ function MessagingServer(appserver, socketFactory, logger, options) {
                     }
                 }
                 self.textClient = new client.connect(params);
+                if (fs.existsSync(self.queueData)) {
+                    var queues = JSON.parse(fs.readFileSync(self.queueData));
+                    for (var i = 0; i < queues.length; i++) {
+                        self.textClient.queues.push(queues[i]);
+                    }
+                    fs.unlinkSync(self.queueData);
+                    self.log('%s queue(s) loaded from %s...', queues.length, this.queueData);
+                }
             }
         },
         deliverEmail: function(hash) {
@@ -311,6 +320,13 @@ function MessagingServer(appserver, socketFactory, logger, options) {
                 self.setupCon(client);
             });
         },
+        doClose: function(server) {
+            var self = this;
+            if (self.textClient && self.textClient.queues.length) {
+                fs.writeFileSync(self.queueData, JSON.stringify(self.textClient.queues));
+                self.log('Queue saved to %s...', this.queueData);
+            }
+        },
         init: function() {
             if (typeof this.options.key == 'undefined') {
                 throw new Error('Server key not defined!');
@@ -323,6 +339,10 @@ function MessagingServer(appserver, socketFactory, logger, options) {
             this.io = socketFactory(ns);
             this.listen(this.io);
             this.connectTextServer();
+            this.queueData = path.dirname(appserver.config) + path.sep + 'queue' + path.sep + 'text.json';
+            if (!fs.existsSync(path.dirname(this.queueData))) {
+                fs.mkdirSync(path.dirname(this.queueData));
+            }
         }
     }
     app.init();

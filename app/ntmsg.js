@@ -157,13 +157,17 @@ function MessagingServer(appserver, socketFactory, logger, options) {
                 }
             }
         },
-        deliverEmail: function(hash) {
+        deliverEmail: function(hash, attr) {
             var self = this;
             if (typeof self.options['email-sender'] != 'undefined') {
                 var cli = self.getEmailCLI(self.options['email-sender']);
-                self.execCLI(cli, {
+                var params = {
                     HASH: hash
-                });
+                };
+                if (typeof attr != 'undefined') {
+                    params.ATTR = attr;
+                }
+                self.execCLI(cli, params);
             }
         },
         notifySignin: function(action, data) {
@@ -240,12 +244,20 @@ function MessagingServer(appserver, socketFactory, logger, options) {
             socket.on('text-message', function(data) {
                 self.log('%s: [Server] Send text to %s "%s"...', socket.id, data.number, data.message);
                 if (self.textClient) {
-                    self.textClient.sendText(data.number, data.message, data.hash);
+                    if (data.attr) {
+                        self.textClient.sendText(data.number, data.message, data.hash, data.attr);
+                    } else {
+                        self.textClient.sendText(data.number, data.message, data.hash);
+                    }
                 }
             });
             socket.on('deliver-email', function(data) {
                 self.log('%s: [Server] Deliver email %s...', socket.id, data.hash);
-                self.deliverEmail(data.hash);
+                if (data.attr) {
+                    self.deliverEmail(data.hash, data.attr);
+                } else {
+                    self.deliverEmail(data.hash);
+                }
             });
             socket.on('user-signin', function(data) {
                 self.log('%s: [Server] User signin %s...', socket.id, data.username);

@@ -1,7 +1,7 @@
 {
     "myapp": {
         "title": "MyApp that is doing something (Unsecure)",
-        "module": "./../app/myapp",
+        "module": "./app/myapp",
         "enabled": true,
         "secure": false,
         "port": 8080,

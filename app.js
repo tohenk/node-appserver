@@ -20,16 +20,29 @@
  * SOFTWARE.
  */
 
+// === declarations ===
+
+global.ENV_CONFIG = 'NT_APP_CONFIG';
+
 // === module dependencies ===
 
 var
     path         = require('path'),
-    appserver    = require('./lib/server')();
+    cmd          = require('./lib/cmd');
 
-if (!appserver.cmd.parse() || (appserver.cmd.get('help') && usage())) {
+// === command line setup ===
+
+cmd.addBool('help', 'h', 'Show program usage').setAccessible(false);
+cmd.addVar('config', 'c', 'Read app configuration from file', 'config-file');
+cmd.addVar('logdir', 'l', 'Set the log file location', 'directory');
+
+if (!cmd.parse() || (cmd.get('help') && usage())) {
     process.exit();
 }
 
+// === run the app ===
+
+var appserver = require('./server/socket')();
 appserver.run();
 
 function usage() {
@@ -37,10 +50,10 @@ function usage() {
     console.log('  node %s [options]', path.basename(process.argv[1]));
     console.log('');
     console.log('Options:');
-    console.log(appserver.cmd.dump());
+    console.log(cmd.dump());
     console.log('');
     console.log('Alternativelly, application configuration file can be passed using environment');
-    console.log('variable %s.', appserver.ENV_CONFIG);
+    console.log('variable %s.', global.ENV_CONFIG);
     console.log('');
     console.log('Application configuration expect a JSON file format.');
     console.log('The content of configuration shown as following example:');

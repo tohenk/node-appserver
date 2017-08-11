@@ -26,16 +26,16 @@ var client = require('../lib/ntgw.client');
 
 module.exports = exports = MessagingServer;
 
-var Sockets = {};
+var Connections = {};
 
-function MessagingServer(appserver, socketFactory, logger, options) {
+function MessagingServer(appserver, factory, logger, options) {
     var app = {
         CON_SERVER: 1,
         CON_CLIENT: 2,
         appserver: appserver,
         util: appserver.util,
         logger: logger,
-        io: null,
+        con: null,
         options: options || {},
         registerTimeout: 60,
         serverRoom: 'server',
@@ -183,66 +183,66 @@ function MessagingServer(appserver, socketFactory, logger, options) {
         getUsers: function() {
             var users = [];
             var uids = [];
-            for (id in Sockets) {
-                if (Sockets[id].type == this.CON_CLIENT) {
-                    if (uids.indexOf(Sockets[id].uid) < 0) {
-                        users.push({uid: Sockets[id].uid, time: Sockets[id].time});
-                        uids.push(Sockets[id].uid);
+            for (id in Connections) {
+                if (Connections[id].type == this.CON_CLIENT) {
+                    if (uids.indexOf(Connections[id].uid) < 0) {
+                        users.push({uid: Connections[id].uid, time: Connections[id].time});
+                        uids.push(Connections[id].uid);
                     }
                 }
             }
             return users;
         },
-        addSocket: function(socket, data) {
-            if (!Sockets[socket.id]) {
-                data.socket = socket;
+        addCon: function(con, data) {
+            if (!Connections[con.id]) {
+                data.con = con;
                 data.time = Date.now();
-                Sockets[socket.id] = data;
+                Connections[con.id] = data;
             }
         },
-        removeSocket: function(socket) {
-            if (Sockets[socket.id]) {
-                var data = Sockets[socket.id];
+        removeCon: function(con) {
+            if (Connections[con.id]) {
+                var data = Connections[con.id];
                 switch (data.type) {
                     case this.CON_SERVER:
-                        socket.leave(this.serverRoom);
-                        this.log('%s: Server disconnected...', socket.id);
+                        con.leave(this.serverRoom);
+                        this.log('%s: Server disconnected...', con.id);
                         break;
                     case this.CON_CLIENT:
-                        socket.leave(data.uid);
+                        con.leave(data.uid);
                         // notify other users someone is offline
-                        this.io.emit('user-offline', data.uid);
-                        this.log('%s: User %s disconnected...', socket.id, data.uid);
+                        this.con.emit('user-offline', data.uid);
+                        this.log('%s: User %s disconnected...', con.id, data.uid);
                         break;
                 }
-                delete Sockets[socket.id];
+                delete Connections[con.id];
             }
         },
-        handleServerCon: function(socket) {
+        handleServerCon: function(con) {
             var self = this;
-            socket.on('whos-online', function() {
-                self.log('%s: [Server] Query whos-online...', socket.id);
+            con.on('whos-online', function() {
+                self.log('%s: [Server] Query whos-online...', con.id);
                 var users = self.getUsers();
-                socket.emit('whos-online', users);
+                con.emit('whos-online', users);
                 for (var i = 0; i < users.length; i++) {
-                    self.log('%s: [Server] User: %s, time: %d', socket.id, users[i].uid, users[i].time);
+                    self.log('%s: [Server] User: %s, time: %d', con.id, users[i].uid, users[i].time);
                 }
             });
-            socket.on('notification', function(data) {
-                self.log('%s: [Server] New notification for %s...', socket.id, data.uid);
+            con.on('notification', function(data) {
+                self.log('%s: [Server] New notification for %s...', con.id, data.uid);
                 var notif = {
                     message: data.message
                 }
                 if (data.code) notif.code = data.code;
                 if (data.referer) notif.referer = data.referer;
-                self.io.to(data.uid).emit('notification', notif);
+                self.con.to(data.uid).emit('notification', notif);
             });
-            socket.on('message', function(data) {
-                self.log('%s: [Server] New message for %s...', socket.id, data.uid);
-                self.io.to(data.uid).emit('message');
+            con.on('message', function(data) {
+                self.log('%s: [Server] New message for %s...', con.id, data.uid);
+                self.con.to(data.uid).emit('message');
             });
-            socket.on('text-message', function(data) {
-                self.log('%s: [Server] Send text to %s "%s"...', socket.id, data.number, data.message);
+            con.on('text-message', function(data) {
+                self.log('%s: [Server] Send text to %s "%s"...', con.id, data.number, data.message);
                 if (self.textClient) {
                     if (data.attr) {
                         self.textClient.sendText(data.number, data.message, data.hash, data.attr);
@@ -251,43 +251,43 @@ function MessagingServer(appserver, socketFactory, logger, options) {
                     }
                 }
             });
-            socket.on('deliver-email', function(data) {
-                self.log('%s: [Server] Deliver email %s...', socket.id, data.hash);
+            con.on('deliver-email', function(data) {
+                self.log('%s: [Server] Deliver email %s...', con.id, data.hash);
                 if (data.attr) {
                     self.deliverEmail(data.hash, data.attr);
                 } else {
                     self.deliverEmail(data.hash);
                 }
             });
-            socket.on('user-signin', function(data) {
-                self.log('%s: [Server] User signin %s...', socket.id, data.username);
+            con.on('user-signin', function(data) {
+                self.log('%s: [Server] User signin %s...', con.id, data.username);
                 self.notifySignin('SIGNIN', data);
             });
-            socket.on('user-signout', function(data) {
-                self.log('%s: [Server] User signout %s...', socket.id, data.username);
+            con.on('user-signout', function(data) {
+                self.log('%s: [Server] User signout %s...', con.id, data.username);
                 self.notifySignin('SIGNOUT', data);
             });
         },
-        handleClientCon: function(socket) {
+        handleClientCon: function(con) {
             var self = this;
-            socket.on('notification-read', function(data) {
+            con.on('notification-read', function(data) {
                 if (data.uid) {
-                    self.io.to(data.uid).emit('notification-read', data);
+                    self.con.to(data.uid).emit('notification-read', data);
                 }
             });
-            socket.on('message-sent', function(data) {
+            con.on('message-sent', function(data) {
                 if (data.uid) {
-                    self.io.to(data.uid).emit('message-sent', data);
+                    self.con.to(data.uid).emit('message-sent', data);
                 }
             });
         },
-        setupCon: function(socket) {
+        setupCon: function(con) {
             var self = this;
             // disconnect if not registered within timeout
             var t = setTimeout(function() {
-                socket.disconnect(true);
+                con.disconnect(true);
             }, self.registerTimeout * 1000);
-            socket.on('register', function(data) {
+            con.on('register', function(data) {
                 var dismiss = true;
                 var info = {};
                 // is it a server connection?
@@ -296,39 +296,39 @@ function MessagingServer(appserver, socketFactory, logger, options) {
                         dismiss = false;
                         info.sid = data.sid;
                         info.type = self.CON_SERVER;
-                        socket.join(self.serverRoom);
-                        self.handleServerCon(socket);
-                        self.log('%s: Server connected...', socket.id);
+                        con.join(self.serverRoom);
+                        self.handleServerCon(con);
+                        self.log('%s: Server connected...', con.id);
                     } else {
-                        self.log('%s: Server didn\'t send correct key...', socket.id);
+                        self.log('%s: Server didn\'t send correct key...', con.id);
                     }
                 } else if (data.uid) {
                     dismiss = false;
                     info.uid = data.uid;
                     info.type = self.CON_CLIENT;
-                    socket.join(data.uid);
-                    self.handleClientCon(socket);
+                    con.join(data.uid);
+                    self.handleClientCon(con);
                     // notify other users someone is online
-                    self.io.emit('user-online', data.uid);
-                    self.log('%s: User %s connected...', socket.id, data.uid);
+                    self.con.emit('user-online', data.uid);
+                    self.log('%s: User %s connected...', con.id, data.uid);
                 } else {
-                    self.log('%s: Invalid registration...', socket.id, data.uid);
+                    self.log('%s: Invalid registration...', con.id, data.uid);
                 }
                 if (dismiss) {
-                    socket.disconnect(true);
-                    self.log('%s: Forced disconnect...', socket.id);
+                    con.disconnect(true);
+                    self.log('%s: Forced disconnect...', con.id);
                 } else {
-                    self.addSocket(socket, info);
+                    self.addCon(con, info);
                     clearTimeout(t);
                 }
             });
-            socket.on('disconnect', function() {
-                self.removeSocket(socket);
+            con.on('disconnect', function() {
+                self.removeCon(con);
             });
         },
-        listen: function(socket) {
+        listen: function(con) {
             var self = this;
-            socket.on('connection', function(client) {
+            con.on('connection', function(client) {
                 self.setupCon(client);
             });
         },
@@ -340,20 +340,21 @@ function MessagingServer(appserver, socketFactory, logger, options) {
             }
         },
         init: function() {
-            if (typeof this.options.key == 'undefined') {
+            var self = this;
+            if (typeof self.options.key == 'undefined') {
                 throw new Error('Server key not defined!');
             }
-            if (typeof this.options.timeout != 'undefined') {
-                this.registerTimeout = this.options.timeout;
+            if (typeof self.options.timeout != 'undefined') {
+                self.registerTimeout = self.options.timeout;
             }
-            this.serverKey = this.options.key;
-            var ns = this.options.namespace || null;
-            this.io = socketFactory(ns);
-            this.listen(this.io);
-            this.connectTextServer();
-            this.queueData = path.dirname(appserver.config) + path.sep + 'queue' + path.sep + 'text.json';
-            if (!fs.existsSync(path.dirname(this.queueData))) {
-                fs.mkdirSync(path.dirname(this.queueData));
+            self.serverKey = self.options.key;
+            var ns = self.options.namespace || null;
+            self.con = factory(ns);
+            self.listen(self.con);
+            self.connectTextServer();
+            self.queueData = path.dirname(appserver.config) + path.sep + 'queue' + path.sep + 'text.json';
+            if (!fs.existsSync(path.dirname(self.queueData))) {
+                fs.mkdirSync(path.dirname(self.queueData));
             }
         }
     }

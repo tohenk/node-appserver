@@ -5,32 +5,27 @@
 
 var fs    = require('fs');
 var path  = require('path');
-var cmd   = require('./cmd');
-var util  = require('./util');
+var cmd   = require('./../lib/cmd');
+var util  = require('./../lib/util');
 
 module.exports = exports = AppServer;
 
 var Servers = {};
 
-cmd.addBool('help', 'h', 'Show program usage').setAccessible(false);
 cmd.addVar('port', 'p', 'Specify server listen port, default is port 8080', 'port');
-cmd.addVar('config', 'c', 'Read app configuration from file', 'config-file');
 cmd.addBool('secure', 's', 'Use HTTPS server');
 cmd.addVar('ssl-key', '', 'Set SSL private key');
 cmd.addVar('ssl-cert', '', 'Set SSL public key');
 cmd.addVar('ssl-ca', '', 'Set SSL CA key');
-cmd.addVar('logdir', 'l', 'Set the log file location', 'directory');
 
 function AppServer() {
     var server = {
-        ENV_CONFIG: 'NT_APP_CONFIG',
-        cmd: cmd,
         util: util,
         create: function(options) {
             var server;
             var options = options || {};
-            var port = options.port || this.cmd.get('port');
-            var secure = options.secure || this.cmd.get('secure');
+            var port = options.port || cmd.get('port');
+            var secure = options.secure || cmd.get('secure');
             // check instance in server pool
             if (Servers[port]) {
                 if (Servers[port]['secure'] != secure) {
@@ -41,11 +36,11 @@ function AppServer() {
             // validate secure server
             if (secure) {
                 var err = null;
-                if (!this.cmd.get('ssl-key') || !this.util.fileExist(this.cmd.get('ssl-key'))) {
+                if (!cmd.get('ssl-key') || !this.util.fileExist(cmd.get('ssl-key'))) {
                     err = 'No SSL private key supplied or file not found.';
-                } else if (!this.cmd.get('ssl-cert') || !this.util.fileExist(this.cmd.get('ssl-cert'))) {
+                } else if (!cmd.get('ssl-cert') || !this.util.fileExist(cmd.get('ssl-cert'))) {
                     err = 'No SSL public key supplied or file not found.';
-                } else if (this.cmd.get('ssl-ca') && !this.util.fileExist(this.cmd.get('ssl-ca'))) {
+                } else if (cmd.get('ssl-ca') && !this.util.fileExist(cmd.get('ssl-ca'))) {
                     err = 'SSL CA key file not found.';
                 }
                 if (err) {
@@ -60,11 +55,11 @@ function AppServer() {
             }
             if (secure) {
                 var c = {
-                    key: fs.readFileSync(this.cmd.get('ssl-key')),
-                    cert: fs.readFileSync(this.cmd.get('ssl-cert'))
+                    key: fs.readFileSync(cmd.get('ssl-key')),
+                    cert: fs.readFileSync(cmd.get('ssl-cert'))
                 };
-                if (this.cmd.get('ssl-ca')) {
-                    c.ca = fs.readFileSync(this.cmd.get('ssl-ca'));
+                if (cmd.get('ssl-ca')) {
+                    c.ca = fs.readFileSync(cmd.get('ssl-ca'));
                 }
                 var https = require('https');
                 server = https.createServer(c);
@@ -91,17 +86,18 @@ function AppServer() {
             var module = options.module;
             var namespace = options.path;
             var params = options.params || {};
-            var io = this.createSocket(server);
-            var socket_creator = function(ns) {
+            var socket = this.createSocket(server);
+            var factory = function(ns, options) {
                 var tmp = [];
                 if (namespace) tmp.push(namespace);
                 if (ns) tmp.push(ns);
                 var s = '/' + tmp.join('/');
                 var addr = server.address();
                 console.log('Socket listening on %s:%d%s', addr.family == 'IPv4' ? addr.address : '[' + addr.address + ']', addr.port, s);
-                return tmp.length ? io.of(s) : io.sockets;
+
+                return socketWrap(tmp.length ? socket.of(s) : socket.sockets, options);
             }
-            var logdir = path.resolve(path.dirname(this.config), options.logdir ? options.logdir : this.cmd.get('logdir'));
+            var logdir = path.resolve(path.dirname(this.config), options.logdir ? options.logdir : cmd.get('logdir'));
             var stdout = fs.createWriteStream(logdir + path.sep + name + '.log');
             var stderr = fs.createWriteStream(logdir + path.sep + name + '-error.log');
             var logger = new console.Console(stdout, stderr);
@@ -109,7 +105,7 @@ function AppServer() {
             console.log(title);
             console.log('='.repeat(79));
             console.log('');
-            var instance = require(module)(this, socket_creator, logger, params);
+            var instance = require('./../' + module)(this, factory, logger, params);
             console.log('');
             console.log('-'.repeat(79));
             instance.name = name;
@@ -148,7 +144,7 @@ function AppServer() {
         run: function() {
             var self = this;
             var cnt = 0;
-            self.config = self.cmd.get('config') || process.env[self.ENV_CONFIG];
+            self.config = cmd.get('config') || process.env[global.ENV_CONFIG];
             if (!self.config) {
                 self.config = path.dirname(process.argv[1]) + path.sep + 'app.json';
             }
@@ -188,4 +184,8 @@ function AppServer() {
         }
     }
     return server;
+}
+
+function socketWrap(socket, options) {
+    return socket;
 }

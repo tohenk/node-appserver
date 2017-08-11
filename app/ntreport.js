@@ -24,7 +24,7 @@ var path  = require('path');
 
 module.exports = exports = ReportServer;
 
-function ReportServer(appserver, socketFactory, logger, options) {
+function ReportServer(appserver, factory, logger, options) {
     var app = {
         appserver: appserver,
         util: appserver.util,
@@ -35,7 +35,7 @@ function ReportServer(appserver, socketFactory, logger, options) {
             if (args.length) args[0] = this.util.formatDate(new Date(), '[yyyy-MM-dd HH:mm:ss.zzz]') + ' ' + args[0];
             this.logger.log.apply(null, args);
         },
-        listen: function(ns, socket, params) {
+        listen: function(ns, con, params) {
             var self = this;
             var configPath = path.dirname(self.appserver.config);
             var cli = require('../lib/cli')({
@@ -50,8 +50,8 @@ function ReportServer(appserver, socketFactory, logger, options) {
             // show information
             console.log('Serving %s...', ns);
             if (cli.values.CLI) console.log('Using CLI %s...', cli.values.CLI);
-            // handle socket
-            socket.on('connection', function(client) {
+            // handle con
+            con.on('connection', function(client) {
                 client.on('report', function(data) {
                     self.log('%s: Generating report %s...', client.id, data.hash);
                     var p = cli.exec({
@@ -81,7 +81,7 @@ function ReportServer(appserver, socketFactory, logger, options) {
         },
         init: function() {
             for (var ns in this.options) {
-                this.listen(ns, socketFactory(ns), this.options[ns]);
+                this.listen(ns, factory(ns), this.options[ns]);
             }
         }
     }

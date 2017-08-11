@@ -228,7 +228,7 @@ function MessagingServer(appserver, socketFactory, logger, options) {
                     self.log('%s: [Server] User: %s, time: %d', socket.id, users[i].uid, users[i].time);
                 }
             });
-            socket.on('notify', function(data) {
+            socket.on('notification', function(data) {
                 self.log('%s: [Server] New notification for %s...', socket.id, data.uid);
                 var notif = {
                     message: data.message
@@ -239,7 +239,7 @@ function MessagingServer(appserver, socketFactory, logger, options) {
             });
             socket.on('message', function(data) {
                 self.log('%s: [Server] New message for %s...', socket.id, data.uid);
-                self.io.to(data.uid).emit('new-message');
+                self.io.to(data.uid).emit('message');
             });
             socket.on('text-message', function(data) {
                 self.log('%s: [Server] Send text to %s "%s"...', socket.id, data.number, data.message);

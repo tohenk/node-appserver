@@ -237,6 +237,12 @@ function MessagingServer(appserver, factory, logger, options) {
                 if (data.referer) notif.referer = data.referer;
                 self.con.to(data.uid).emit('notification', notif);
             });
+            con.on('push-notification', function(data) {
+                self.log('%s: [Server] Push notification: %s...', con.id, JSON.stringify(data));
+                if (typeof data.name != 'undefined') {
+                    self.con.emit(data.name, typeof data.data != 'undefined' ? data.data : {});
+                }
+            });
             con.on('message', function(data) {
                 self.log('%s: [Server] New message for %s...', con.id, data.uid);
                 self.con.to(data.uid).emit('message');

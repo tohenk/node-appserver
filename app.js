@@ -27,15 +27,21 @@ global.ENV_CONFIG = 'NT_APP_CONFIG';
 // === module dependencies ===
 
 var
-    path         = require('path'),
-    cmd          = require('./lib/cmd');
-
+    path        = require('path'),
+    cmd         = require('./lib/cmd');
+    
 // === command line setup ===
 
 cmd.addVar('type', 't', 'Server type: socket or xmpp', 'server-type', 'socket');
 cmd.addBool('help', 'h', 'Show program usage').setAccessible(false);
 cmd.addVar('config', 'c', 'Read app configuration from file', 'config-file');
 cmd.addVar('logdir', 'l', 'Set the log file location', 'directory');
+
+// === include app handler ===
+
+var
+    socketapp   = require('./server/socket')(),
+    xmppapp     = require('./server/xmpp')();
 
 if (!cmd.parse() || (cmd.get('help') && usage())) {
     process.exit();
@@ -44,11 +50,10 @@ if (!cmd.parse() || (cmd.get('help') && usage())) {
 // === run the app ===
 
 if ('socket' == cmd.get('type')) {
-    var appserver = require('./server/socket')();
+    socketapp.run();
 } else {
-    var appserver = require('./server/xmpp')();
+    xmppapp.run();
 }
-appserver.run();
 
 function usage() {
     console.log('Usage:');

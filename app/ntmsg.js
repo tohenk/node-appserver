@@ -20,9 +20,10 @@
  * SOFTWARE.
  */
 
-var fs    = require('fs');
-var path  = require('path');
-var client = require('../lib/ntgw.client');
+var fs      = require('fs');
+var path    = require('path');
+var util    = require('../lib/util');
+var client  = require('../lib/ntgw.client');
 
 module.exports = exports = MessagingServer;
 
@@ -32,9 +33,6 @@ function MessagingServer(appserver, factory, logger, options) {
     var app = {
         CON_SERVER: 1,
         CON_CLIENT: 2,
-        appserver: appserver,
-        util: appserver.util,
-        logger: logger,
         con: null,
         options: options || {},
         registerTimeout: 60,
@@ -45,17 +43,17 @@ function MessagingServer(appserver, factory, logger, options) {
         userNotifierCLI: null,
         log: function() {
             var args = Array.from(arguments);
-            if (args.length) args[0] = this.util.formatDate(new Date(), '[yyyy-MM-dd HH:mm:ss.zzz]') + ' ' + args[0];
-            this.logger.log.apply(null, args);
+            if (args.length) args[0] = util.formatDate(new Date(), '[yyyy-MM-dd HH:mm:ss.zzz]') + ' ' + args[0];
+            logger.log.apply(null, args);
         },
         error: function() {
             var args = Array.from(arguments);
-            if (args.length) args[0] = this.util.formatDate(new Date(), '[yyyy-MM-dd HH:mm:ss.zzz]') + ' ' + args[0];
-            this.logger.error.apply(null, args);
+            if (args.length) args[0] = util.formatDate(new Date(), '[yyyy-MM-dd HH:mm:ss.zzz]') + ' ' + args[0];
+            logger.error.apply(null, args);
         },
         getCliPaths: function() {
             var self = this;
-            return [__dirname, path.dirname(self.appserver.config)];
+            return [__dirname, path.dirname(appserver.config)];
         },
         getTextCLI: function(config) {
             var self = this;
@@ -112,11 +110,11 @@ function MessagingServer(appserver, factory, logger, options) {
                 self.log('Result %s...', code);
             });
             p.stdout.on('data', function(line) {
-                var line = self.util.cleanBuffer(line);
+                var line = util.cleanBuffer(line);
                 self.log(line);
             });
             p.stderr.on('data', function(line) {
-                var line = self.util.cleanBuffer(line);
+                var line = util.cleanBuffer(line);
                 self.log(line);
             });
         },
@@ -334,9 +332,13 @@ function MessagingServer(appserver, factory, logger, options) {
         },
         listen: function(con) {
             var self = this;
-            con.on('connection', function(client) {
-                self.setupCon(client);
-            });
+            if (appserver.id == 'socket.io') {
+                con.on('connection', function(client) {
+                    self.setupCon(client);
+                });
+            } else {
+                self.handleServerCon(con);
+            }
         },
         doClose: function(server) {
             var self = this;
@@ -347,13 +349,15 @@ function MessagingServer(appserver, factory, logger, options) {
         },
         init: function() {
             var self = this;
-            if (typeof self.options.key == 'undefined') {
-                throw new Error('Server key not defined!');
+            if (appserver.id == 'socket.io') {
+                if (typeof self.options.key == 'undefined') {
+                    throw new Error('Server key not defined!');
+                }
+                self.serverKey = self.options.key;
             }
             if (typeof self.options.timeout != 'undefined') {
                 self.registerTimeout = self.options.timeout;
             }
-            self.serverKey = self.options.key;
             var ns = self.options.namespace || null;
             self.con = factory(ns);
             self.listen(self.con);
@@ -362,11 +366,12 @@ function MessagingServer(appserver, factory, logger, options) {
             if (!fs.existsSync(path.dirname(self.queueData))) {
                 fs.mkdirSync(path.dirname(self.queueData));
             }
+
+            return this;
         }
     }
-    app.init();
 
-    return app;
+    return app.init();
 }
 
 // EOF

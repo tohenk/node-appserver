@@ -42,8 +42,8 @@ cmd.addVar('ssl-ca', '', 'Set SSL CA key');
 function AppServer() {
     var server = {
         id: 'socket.io',
-        util: util,
         create: function(options) {
+            var self = this;
             var server;
             var options = options || {};
             var port = options.port || cmd.get('port');
@@ -58,11 +58,11 @@ function AppServer() {
             // validate secure server
             if (secure) {
                 var err = null;
-                if (!cmd.get('ssl-key') || !this.util.fileExist(cmd.get('ssl-key'))) {
+                if (!cmd.get('ssl-key') || !util.fileExist(cmd.get('ssl-key'))) {
                     err = 'No SSL private key supplied or file not found.';
-                } else if (!cmd.get('ssl-cert') || !this.util.fileExist(cmd.get('ssl-cert'))) {
+                } else if (!cmd.get('ssl-cert') || !util.fileExist(cmd.get('ssl-cert'))) {
                     err = 'No SSL public key supplied or file not found.';
-                } else if (cmd.get('ssl-ca') && !this.util.fileExist(cmd.get('ssl-ca'))) {
+                } else if (cmd.get('ssl-ca') && !util.fileExist(cmd.get('ssl-ca'))) {
                     err = 'SSL CA key file not found.';
                 }
                 if (err) {
@@ -70,7 +70,7 @@ function AppServer() {
                 }
             }
             var f = function() {
-                console.log("%s server listening on port %d...", secure ? 'HTTPS' : 'HTTP', server.address().port);
+                console.log("%s server listening on %s...", secure ? 'HTTPS' : 'HTTP', self.getAddress(server));
                 if (typeof options.callback == 'function') {
                     options.callback(server);
                 }
@@ -100,10 +100,16 @@ function AppServer() {
             }
             return server;
         },
+        getAddress: function(server) {
+            var addr = server.address();
+
+            return addr.family == 'IPv4' ? addr.address : '[' + addr.address + ']' + ':' + addr.port;
+        },
         createApp: function(server, name, options) {
             if (!server) {
                 throw new Error('No server available, probably wrong configuration.');
             }
+            var self = this;
             var title = options.title || name;
             var module = options.module;
             var namespace = options.path;
@@ -115,7 +121,7 @@ function AppServer() {
                 if (ns) tmp.push(ns);
                 var s = '/' + tmp.join('/');
                 var addr = server.address();
-                console.log('Socket listening on %s:%d%s', addr.family == 'IPv4' ? addr.address : '[' + addr.address + ']', addr.port, s);
+                console.log('Socket listening on %s%s', self.getAddress(server), s);
 
                 return socketWrap(tmp.length ? socket.of(s) : socket.sockets, options);
             }
@@ -171,7 +177,7 @@ function AppServer() {
                 self.config = path.dirname(process.argv[1]) + path.sep + 'app.json';
             }
             console.log('Checking configuration %s', self.config);
-            if (self.config && self.util.fileExist(self.config)) {
+            if (self.config && util.fileExist(self.config)) {
                 console.log('Reading configuration %s', self.config);
                 var apps = JSON.parse(fs.readFileSync(self.config));
                 for (name in apps) {

@@ -32,6 +32,7 @@ var
 
 // === command line setup ===
 
+cmd.addVar('type', 't', 'Server type: socket or xmpp', 'server-type', 'socket');
 cmd.addBool('help', 'h', 'Show program usage').setAccessible(false);
 cmd.addVar('config', 'c', 'Read app configuration from file', 'config-file');
 cmd.addVar('logdir', 'l', 'Set the log file location', 'directory');
@@ -42,7 +43,11 @@ if (!cmd.parse() || (cmd.get('help') && usage())) {
 
 // === run the app ===
 
-var appserver = require('./server/socket')();
+if ('socket' == cmd.get('type')) {
+    var appserver = require('./server/socket')();
+} else {
+    var appserver = require('./server/xmpp')();
+}
 appserver.run();
 
 function usage() {

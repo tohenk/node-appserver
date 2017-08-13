@@ -20,24 +20,55 @@
  * SOFTWARE.
  */
 
-var path  = require('path');
+var path    = require('path');
+var util    = require('../lib/util');
 
 module.exports = exports = ReportServer;
 
 function ReportServer(appserver, factory, logger, options) {
     var app = {
-        appserver: appserver,
-        util: appserver.util,
-        logger: logger,
         options: options || {},
+        handlers: {},
         log: function() {
             var args = Array.from(arguments);
-            if (args.length) args[0] = this.util.formatDate(new Date(), '[yyyy-MM-dd HH:mm:ss.zzz]') + ' ' + args[0];
-            this.logger.log.apply(null, args);
+            if (args.length) args[0] = util.formatDate(new Date(), '[yyyy-MM-dd HH:mm:ss.zzz]') + ' ' + args[0];
+            logger.log.apply(null, args);
         },
-        listen: function(ns, con, params) {
+        handleCon: function(con, cli) {
             var self = this;
-            var configPath = path.dirname(self.appserver.config);
+            con.on('report', function(data) {
+                self.log('%s: Generating report %s...', con.id, data.hash);
+                if (typeof cli == 'undefined' && data.namespace) {
+                    var cli = self.handlers[data.namespace];
+                }
+                if (typeof cli == 'undefined') return;
+                var p = cli.exec({
+                    REPORTID: data.hash
+                });
+                p.on('exit', function(code) {
+                    self.log('%s: %s status is %s...', con.id, data.hash, code);
+                    con.emit('done', { hash: data.hash, code: code });
+                });
+                p.stdout.on('data', function(line) {
+                    var line = util.cleanBuffer(line);
+                    self.log('%s: %s', con.id, line);
+                    // monitor progress
+                    var re = /Progress\:\s+(\d+)\%/g;
+                    var matches = re.exec(line);
+                    if (matches) {
+                        var progress = parseInt(matches[1]);
+                        con.emit('progress', { hash: data.hash, progress: progress });
+                    }
+                });
+                p.stderr.on('data', function(line) {
+                    var line = util.cleanBuffer(line);
+                    self.log('%s: %s', con.id, line);
+                });
+            });
+        },
+        createHandler: function(name, options) {
+            var self = this;
+            var configPath = path.dirname(appserver.config);
             var cli = require('../lib/cli')({
                 paths: [__dirname, configPath],
                 args: ['ntreport:generate', '--application=%APP%', '--env=%ENV%', '%REPORTID%'],
@@ -46,48 +77,32 @@ function ReportServer(appserver, factory, logger, options) {
                     'ENV': typeof v8debug == 'object' ? 'dev' : 'prod'
                 }
             });
-            cli.init(params);
-            // show information
-            console.log('Serving %s...', ns);
-            if (cli.values.CLI) console.log('Using CLI %s...', cli.values.CLI);
-            // handle con
-            con.on('connection', function(client) {
-                client.on('report', function(data) {
-                    self.log('%s: Generating report %s...', client.id, data.hash);
-                    var p = cli.exec({
-                        REPORTID: data.hash
-                    });
-                    p.on('exit', function(code) {
-                        self.log('%s: %s status is %s...', client.id, data.hash, code);
-                        client.emit('done', {code: code});
-                    });
-                    p.stdout.on('data', function(line) {
-                        var line = self.util.cleanBuffer(line);
-                        self.log('%s: %s', client.id, line);
-                        // monitor progress
-                        var re = /Progress\:\s+(\d+)\%/g;
-                        var matches = re.exec(line);
-                        if (matches) {
-                            var progress = parseInt(matches[1]);
-                            client.emit('progress', {progress: progress});
-                        }
-                    });
-                    p.stderr.on('data', function(line) {
-                        var line = self.util.cleanBuffer(line);
-                        self.log('%s: %s', client.id, line);
-                    });
-                });
-            });
+            cli.init(options);
+            self.handlers[name] = cli;
+
+            return cli;
         },
         init: function() {
+            var self = this;
             for (var ns in this.options) {
-                this.listen(ns, factory(ns), this.options[ns]);
+                var cli = self.createHandler(ns, self.options[ns]);
+                console.log('Serving %s...', ns);
+                if (cli.values.CLI) console.log('Using CLI %s...', cli.values.CLI);
             }
+            var con = factory();
+            if (appserver.id == 'socket.io') {
+                con.on('connection', function(client) {
+                    self.handleCon(client);
+                });
+            } else {
+                self.handleCon(con);
+            }
+
+            return this;
         }
     }
-    app.init();
 
-    return app;
+    return app.init();
 }
 
 // EOF

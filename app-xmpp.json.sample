@@ -1,0 +1,18 @@
+{
+    "myapp": {
+        "title": "MyApp that is doing something",
+        "module": "./app/myapp",
+        "enabled": true,
+        "jid": "user@localhost",
+        "password": "mypass",
+        "room": "myapp",
+        "uid": "nick",
+        "logdir": "logs",
+        "params": {
+            "something": {
+                "cli": "/path/to/cli"
+            },
+            "other": "/path/to/other/cli"
+        }
+    }
+}

@@ -34,15 +34,15 @@ function ReportServer(appserver, factory, logger, options) {
             if (args.length) args[0] = util.formatDate(new Date(), '[yyyy-MM-dd HH:mm:ss.zzz]') + ' ' + args[0];
             logger.log.apply(null, args);
         },
-        handleCon: function(con, cli) {
+        handleCon: function(con, cmd) {
             var self = this;
             con.on('report', function(data) {
                 self.log('%s: Generating report %s...', con.id, data.hash);
-                if (typeof cli == 'undefined' && data.namespace) {
-                    var cli = self.handlers[data.namespace];
+                if (typeof cmd == 'undefined' && data.namespace) {
+                    var cmd = self.handlers[data.namespace];
                 }
-                if (typeof cli == 'undefined') return;
-                var p = cli.exec({
+                if (typeof cmd == 'undefined') return;
+                var p = cmd.exec({
                     REPORTID: data.hash
                 });
                 p.on('exit', function(code) {
@@ -69,7 +69,7 @@ function ReportServer(appserver, factory, logger, options) {
         createHandler: function(name, options) {
             var self = this;
             var configPath = path.dirname(appserver.config);
-            var cli = require('../lib/cli')({
+            var cmd = require('../lib/command')(options, {
                 paths: [__dirname, configPath],
                 args: ['ntreport:generate', '--application=%APP%', '--env=%ENV%', '%REPORTID%'],
                 values: {
@@ -77,17 +77,15 @@ function ReportServer(appserver, factory, logger, options) {
                     'ENV': typeof v8debug == 'object' ? 'dev' : 'prod'
                 }
             });
-            cli.init(options);
-            self.handlers[name] = cli;
-
-            return cli;
+            self.handlers[name] = cmd;
+            return cmd;
         },
         init: function() {
             var self = this;
             for (var ns in this.options) {
-                var cli = self.createHandler(ns, self.options[ns]);
+                var cmd = self.createHandler(ns, self.options[ns]);
                 console.log('Serving %s...', ns);
-                if (cli.values.CLI) console.log('Using CLI %s...', cli.values.CLI);
+                console.log('Using command %s...', cmd.getId());
             }
             var con = factory();
             if (appserver.id == 'socket.io') {
@@ -97,11 +95,9 @@ function ReportServer(appserver, factory, logger, options) {
             } else {
                 self.handleCon(con);
             }
-
             return this;
         }
     }
-
     return app.init();
 }
 

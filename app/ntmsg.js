@@ -38,9 +38,9 @@ function MessagingServer(appserver, factory, logger, options) {
         registerTimeout: 60,
         serverRoom: 'server',
         textClient: null,
-        textCLI: null,
-        emailCLI: null,
-        userNotifierCLI: null,
+        textCmd: null,
+        emailCmd: null,
+        userNotifierCmd: null,
         log: function() {
             var args = Array.from(arguments);
             if (args.length) args[0] = util.formatDate(new Date(), '[yyyy-MM-dd HH:mm:ss.zzz]') + ' ' + args[0];
@@ -51,61 +51,61 @@ function MessagingServer(appserver, factory, logger, options) {
             if (args.length) args[0] = util.formatDate(new Date(), '[yyyy-MM-dd HH:mm:ss.zzz]') + ' ' + args[0];
             logger.error.apply(null, args);
         },
-        getCliPaths: function() {
+        getPaths: function() {
             var self = this;
             return [__dirname, path.dirname(appserver.config)];
         },
-        getTextCLI: function(config) {
+        getTextCmd: function(config) {
             var self = this;
-            if (self.textCLI == null) {
-                self.textCLI = require('../lib/cli')({
-                    paths: self.getCliPaths(),
+            if (self.textCmd == null) {
+                self.textCmd = require('../lib/command')(config, {
+                    paths: self.getPaths(),
                     args: ['ntucp:messaging', '--application=%APP%', '--env=%ENV%', '%CMD%', '%DATA%'],
                     values: {
                         'APP': 'frontend',
                         'ENV': typeof v8debug == 'object' ? 'dev' : 'prod'
                     }
                 });
-                self.textCLI.init(config);
-                if (self.textCLI.values.CLI) console.log('Text client CLI %s...', self.textCLI.values.CLI);
+                console.log('Text client using %s...', self.textCmd.getId());
             }
-            return self.textCLI;
+            return self.textCmd;
         },
-        getEmailCLI: function(config) {
+        getEmailCmd: function(config) {
             var self = this;
-            if (self.emailCLI == null) {
-                self.emailCLI = require('../lib/cli')({
-                    paths: self.getCliPaths(),
+            if (self.emailCmd == null) {
+                self.emailCmd = require('../lib/command')(config, {
+                    paths: self.getPaths(),
                     args: ['ntucp:deliver-email', '--application=%APP%', '--env=%ENV%', '%HASH%'],
                     values: {
                         'APP': 'frontend',
                         'ENV': typeof v8debug == 'object' ? 'dev' : 'prod'
                     }
                 });
-                self.emailCLI.init(config);
-                if (self.emailCLI.values.CLI) console.log('Email delivery using %s...', self.emailCLI.values.CLI);
+                console.log('Email delivery using %s...', self.emailCmd.getId());
             }
-            return self.emailCLI;
+            return self.emailCmd;
         },
-        getUserNotifierCLI: function(config) {
+        getUserNotifierCmd: function(config) {
             var self = this;
-            if (self.userNotifierCLI == null) {
-                self.userNotifierCLI = require('../lib/cli')({
-                    paths: self.getCliPaths(),
+            if (self.userNotifierCmd == null) {
+                self.userNotifierCmd = require('../lib/command')(config, {
+                    paths: self.getPaths(),
                     args: ['ntucp:signin-notify', '--application=%APP%', '--env=%ENV%', '%ACTION%', '%DATA%'],
                     values: {
                         'APP': 'frontend',
                         'ENV': typeof v8debug == 'object' ? 'dev' : 'prod'
                     }
                 });
-                self.userNotifierCLI.init(config);
-                if (self.userNotifierCLI.values.CLI) console.log('Signin notifier using %s...', self.userNotifierCLI.values.CLI);
+                console.log('Signin notifier using %s...', self.userNotifierCmd.getId());
             }
-            return self.userNotifierCLI;
+            return self.userNotifierCmd;
         },
-        execCLI: function(cli, values) {
+        execCmd: function(cmd, values) {
             var self = this;
-            var p = cli.exec(values);
+            var p = cmd.exec(values);
+            p.on('message', function(data) {
+                console.log('Message from process: %s', JSON.stringify(data));
+            });
             p.on('exit', function(code) {
                 self.log('Result %s...', code);
             });
@@ -128,17 +128,17 @@ function MessagingServer(appserver, factory, logger, options) {
                     self.error.apply(self, Array.from(arguments));
                 }
                 if (typeof self.options['text-client'] != 'undefined') {
-                    var cli = self.getTextCLI(self.options['text-client']);
+                    var cmd = self.getTextCmd(self.options['text-client']);
                     params.delivered = function(hash, number, code, sent, received) {
                         self.log('%s: Delivery status for %s is %s', hash, number, code);
-                        self.execCLI(cli, {
+                        self.execCmd(cmd, {
                             CMD: 'DELV',
                             DATA: JSON.stringify({hash: hash, number: number, code: code, sent: sent, received: received})
                         });
                     }
                     params.message = function(date, number, message, hash) {
                         self.log('%s: New message from %s', hash, number);
-                        self.execCLI(cli, {
+                        self.execCmd(cmd, {
                             CMD: 'MESG',
                             DATA: JSON.stringify({date: date, number: number, message: message, hash: hash})
                         });
@@ -158,21 +158,21 @@ function MessagingServer(appserver, factory, logger, options) {
         deliverEmail: function(hash, attr) {
             var self = this;
             if (typeof self.options['email-sender'] != 'undefined') {
-                var cli = self.getEmailCLI(self.options['email-sender']);
+                var cmd = self.getEmailCmd(self.options['email-sender']);
                 var params = {
                     HASH: hash
                 };
                 if (typeof attr != 'undefined') {
                     params.ATTR = attr;
                 }
-                self.execCLI(cli, params);
+                self.execCmd(cmd, params);
             }
         },
         notifySignin: function(action, data) {
             var self = this;
             if (typeof self.options['user-notifier'] != 'undefined') {
-                var cli = self.getUserNotifierCLI(self.options['user-notifier']);
-                self.execCLI(cli, {
+                var cmd = self.getUserNotifierCmd(self.options['user-notifier']);
+                self.execCmd(cmd, {
                     ACTION: action,
                     DATA: JSON.stringify(data)
                 });
@@ -366,11 +366,9 @@ function MessagingServer(appserver, factory, logger, options) {
             if (!fs.existsSync(path.dirname(self.queueData))) {
                 fs.mkdirSync(path.dirname(self.queueData));
             }
-
             return this;
         }
     }
-
     return app.init();
 }
 

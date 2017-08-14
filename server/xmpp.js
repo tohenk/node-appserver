@@ -305,11 +305,9 @@ function XmppConnection(options) {
         },
         to: function(uid) {
             this._to = uid;
-
             return this;
         }
     }
     handler.connect();
-
     return handler;
 }

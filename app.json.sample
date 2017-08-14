@@ -8,10 +8,27 @@
         "path": null,
         "logdir": "logs",
         "params": {
-            "something": {
-                "cli": "/path/to/cli"
+            "my-cli": "/path/to/cli",
+            "my-other-cli": {
+                "cli": "/path/to/other/cli",
+                "bin": "php",
+                "args": [
+                    "-f",
+                    "%CLI%",
+                    "--",
+                    "--key1=value1",
+                    "--key2=%VALUE%",
+                    "%DATA%"
+                ]
             },
-            "other": "/path/to/other/cli"
+            "post-to-my-website": {
+                "url": "http://www.example.com/api",
+                "method": "POST",
+                "data": {
+                    "key1": "value1",
+                    "key2": "%VALUE%"
+                }
+            },
         }
     }
 }

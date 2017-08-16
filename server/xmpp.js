@@ -99,6 +99,7 @@ function XmppConnection(options) {
         con: null,
         id: null,
         events: [],
+        skipHistory: true,
         connect: function() {
             var self = this;
             self.jid = options.jid;
@@ -212,6 +213,10 @@ function XmppConnection(options) {
             var self = this;
             try {
                 debug('onMessage: ' + message.toString());
+                if (self.skipHistory && message.getChild('delay')) {
+                    debug('Message skipped');
+                    return;
+                }
                 var bd = message.getChild('body');
                 if (bd) {
                     var event = bd.getText();

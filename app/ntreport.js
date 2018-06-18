@@ -1,4 +1,6 @@
 /**
+ * The MIT License (MIT)
+ *
  * Copyright (c) 2014-2017 Toha <tohenk@yahoo.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
@@ -20,13 +22,13 @@
  * SOFTWARE.
  */
 
-var path    = require('path');
-var util    = require('../lib/util');
+const path    = require('path');
+const util    = require('../lib/util');
 
 module.exports = exports = ReportServer;
 
 function ReportServer(appserver, factory, logger, options) {
-    var app = {
+    const app = {
         options: options || {},
         handlers: {},
         log: function() {
@@ -35,39 +37,37 @@ function ReportServer(appserver, factory, logger, options) {
             logger.log.apply(null, args);
         },
         handleCon: function(con, cmd) {
-            var self = this;
-            con.on('report', function(data) {
-                self.log('%s: Generating report %s...', con.id, data.hash);
+            con.on('report', (data) => {
+                this.log('%s: Generating report %s...', con.id, data.hash);
                 if (typeof cmd == 'undefined' && data.namespace) {
-                    var cmd = self.handlers[data.namespace];
+                    var cmd = this.handlers[data.namespace];
                 }
                 if (typeof cmd == 'undefined') return;
-                var p = cmd.exec({
+                const p = cmd.exec({
                     REPORTID: data.hash
                 });
-                p.on('exit', function(code) {
-                    self.log('%s: %s status is %s...', con.id, data.hash, code);
+                p.on('exit', (code) => {
+                    this.log('%s: %s status is %s...', con.id, data.hash, code);
                     con.emit('done', { hash: data.hash, code: code });
                 });
-                p.stdout.on('data', function(line) {
+                p.stdout.on('data', (line) => {
                     var line = util.cleanBuffer(line);
-                    self.log('%s: %s', con.id, line);
+                    this.log('%s: %s', con.id, line);
                     // monitor progress
-                    var re = /Progress\:\s+(\d+)\%/g;
-                    var matches = re.exec(line);
+                    const re = /Progress\:\s+(\d+)\%/g;
+                    const matches = re.exec(line);
                     if (matches) {
-                        var progress = parseInt(matches[1]);
+                        const progress = parseInt(matches[1]);
                         con.emit('progress', { hash: data.hash, progress: progress });
                     }
                 });
-                p.stderr.on('data', function(line) {
+                p.stderr.on('data', (line) => {
                     var line = util.cleanBuffer(line);
-                    self.log('%s: %s', con.id, line);
+                    this.log('%s: %s', con.id, line);
                 });
             });
         },
         createHandler: function(name, options) {
-            var self = this;
             var configPath = path.dirname(appserver.config);
             var cmd = require('../lib/command')(options, {
                 paths: [__dirname, configPath],
@@ -77,23 +77,22 @@ function ReportServer(appserver, factory, logger, options) {
                     'ENV': typeof v8debug == 'object' ? 'dev' : 'prod'
                 }
             });
-            self.handlers[name] = cmd;
+            this.handlers[name] = cmd;
             return cmd;
         },
         init: function() {
-            var self = this;
             for (var ns in this.options) {
-                var cmd = self.createHandler(ns, self.options[ns]);
+                var cmd = this.createHandler(ns, this.options[ns]);
                 console.log('Serving %s...', ns);
                 console.log('Using command %s...', cmd.getId());
             }
             var con = factory();
             if (appserver.id == 'socket.io') {
-                con.on('connection', function(client) {
-                    self.handleCon(client);
+                con.on('connection', (client) => {
+                    this.handleCon(client);
                 });
             } else {
-                self.handleCon(con);
+                this.handleCon(con);
             }
             return this;
         }

@@ -1,4 +1,6 @@
 /**
+ * The MIT License (MIT)
+ *
  * Copyright (c) 2016-2017 Toha <tohenk@yahoo.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
@@ -24,24 +26,24 @@
  * App Server Handler for XMPP
  */
 
-var fs    = require('fs');
-var path  = require('path');
-var u     = require('util');
-var cmd   = require('./../lib/cmd');
-var util  = require('./../lib/util');
-var xmpp  = require('node-xmpp-client');
-var debug = require('debug')('appserver-xmpp');
+const fs    = require('fs');
+const path  = require('path');
+const u     = require('util');
+const cmd   = require('./../lib/cmd');
+const util  = require('./../lib/util');
+const xmpp  = require('node-xmpp-client');
+const debug = require('debug')('appserver-xmpp');
 
 module.exports = exports = AppServer;
 
 function AppServer() {
-    var server = {
+    const server = {
         id: 'xmpp',
         createApp: function(name, options) {
             var title = options.title || name;
             var module = options.module;
             var params = options.params || {};
-            var factory = function(ns, params) {
+            var factory = (ns, params) => {
                 return XmppConnection(options);
             }
             var logdir = path.resolve(path.dirname(this.config), options.logdir ? options.logdir : cmd.get('logdir'));
@@ -52,24 +54,22 @@ function AppServer() {
             console.log(title);
             console.log('='.repeat(79));
             console.log('');
-            var instance = require('./../' + module)(this, factory, logger, params);
+            const instance = require('./../' + module)(this, factory, logger, params);
             console.log('');
             console.log('-'.repeat(79));
             instance.name = name;
-
             return instance;
         },
         run: function() {
-            var self = this;
             var cnt = 0;
-            self.config = cmd.get('config') || process.env[global.ENV_CONFIG];
-            if (!self.config) {
-                self.config = path.dirname(process.argv[1]) + path.sep + 'app.json';
+            this.config = cmd.get('config') || process.env[global.ENV_CONFIG];
+            if (!this.config) {
+                this.config = path.dirname(process.argv[1]) + path.sep + 'app.json';
             }
-            console.log('Checking configuration %s', self.config);
-            if (self.config && util.fileExist(self.config)) {
-                console.log('Reading configuration %s', self.config);
-                var apps = JSON.parse(fs.readFileSync(self.config));
+            console.log('Checking configuration %s', this.config);
+            if (self.config && util.fileExist(this.config)) {
+                console.log('Reading configuration %s', this.config);
+                const apps = JSON.parse(fs.readFileSync(this.config));
                 for (name in apps) {
                     var options = apps[name];
                     if (!typeof options == 'object') {
@@ -95,68 +95,70 @@ function AppServer() {
 }
 
 function XmppConnection(options) {
-    var handler = {
+    const handler = {
         con: null,
         id: null,
         events: [],
         skipHistory: true,
         connect: function() {
-            var self = this;
-            self.jid = options.jid;
-            self.password = options.password;
-            self.room = options.room + '@conference.' + self.jid.substr(self.jid.indexOf('@') + 1);
-            self.uid = options.uid || 'u' + Math.floor(Math.random() * 10000000);
-            self.con = new xmpp.Client({
-                jid: self.jid,
-                password: self.password,
-                host: self.jid.substr(self.jid.indexOf('@') + 1)
+            this.jid = options.jid;
+            this.password = options.password;
+            this.room = options.room + '@conference.' + this.jid.substr(this.jid.indexOf('@') + 1);
+            this.uid = options.uid || 'u' + Math.floor(Math.random() * 10000000);
+            this.con = new xmpp.Client({
+                jid: this.jid,
+                password: this.password,
+                host: this.jid.substr(this.jid.indexOf('@') + 1)
             });
-            self.con.on('online', function(data) {
-                self.id = data.jid;
-                var presence = new xmpp.Stanza('presence', {
+            this.con.on('online', (data) => {
+                this.id = data.jid;
+                const presence = new xmpp.Stanza('presence', {
                     to: self.room + '/' + self.uid
                 });
                 presence.c('x', { xmlns: 'http://jabber.org/protocol/muc' });
-                self.con.send(presence);
+                this.con.send(presence);
             });
-            self.con.on('stanza', function(stanza) {
+            this.con.on('stanza', (stanza) => {
                 if (stanza.is('presence')) {
-                    self.onPresence(stanza);
+                    this.onPresence(stanza);
                 }
                 if (stanza.is('message')) {
-                    self.onMessage(stanza);
+                    this.onMessage(stanza);
                 }
                 if (stanza.is('roster')) {
-                    self.onRoster(stanza);
+                    this.onRoster(stanza);
                 }
                 if (stanza.is('iq')) {
-                    var ping = stanza.getChild('ping', 'urn:xmpp:ping');
+                    const ping = stanza.getChild('ping', 'urn:xmpp:ping');
                     if (ping) {
-                        var pong = new xmpp.Stanza('iq', {
-                            from: self.id.toString(),
+                        const pong = new xmpp.Stanza('iq', {
+                            from: this.id.toString(),
                             to: stanza.attrs.from,
                             id: stanza.attrs.id,
                             type: 'result'
                         });
-                        self.con.send(pong);
+                        this.con.send(pong);
                         debug('Send PING response to SERVER.');
                     }
                 }
             });
-            self.con.on('error', function(err) {
+            this.con.on('error', (err) => {
                 console.error(err);
-                process.exit();
+                // retry on error
+                debug('Retrying connection in 30 seconds.');
+                setTimeout(function() {
+                    this.connect();
+                }, 30000);
             })
         },
         getPayload: function(value) {
-            var self = this;
             if (typeof value == 'object') {
                 if (value.children.length > 0) {
                     var data = {};
                     var idx = 0;
                     for (var i = 0; i < value.children.length; i++) {
                         var c = value.children[i];
-                        var v = self.getPayload(c);
+                        var v = this.getPayload(c);
                         if (value.children.length == 1 && typeof c == 'string') {
                             data = v;
                             break;
@@ -176,26 +178,24 @@ function XmppConnection(options) {
             }
         },
         buildPayload: function(node, value) {
-            var self = this;
             if (Array.isArray(value) || typeof value == 'object') {
                 for (key in value) {
                     var num = key.toString().match(/^(\d+)$/) ? true : false;
                     var c = node.c(num ? 'VALUE' : key);
-                    self.buildPayload(c, value[key]);
+                    this.buildPayload(c, value[key]);
                 }
             } else {
                 node.t(value);
             }
         },
         trigger: function(event, data) {
-            var self = this;
             debug('Trigger event: ' + event + ' with: ' + u.inspect(data));
-            for (var i = 0; i < self.events.length; i++) {
-                var ev = self.events[i];
+            for (var i = 0; i < this.events.length; i++) {
+                var ev = this.events[i];
                 if (event == ev.name) {
                     if (typeof ev.handler == 'function') {
                         var trigger = true;
-                        if (typeof data != 'undefined' && typeof data.uid != 'undefined' && data.uid != self.uid) {
+                        if (typeof data != 'undefined' && typeof data.uid != 'undefined' && data.uid != this.uid) {
                             trigger = false;
                         }
                         if (trigger) {
@@ -210,10 +210,9 @@ function XmppConnection(options) {
             }
         },
         onMessage: function(message) {
-            var self = this;
             try {
                 debug('onMessage: ' + message.toString());
-                if (self.skipHistory && message.getChild('delay')) {
+                if (this.skipHistory && message.getChild('delay')) {
                     debug('Message skipped');
                     return;
                 }
@@ -222,7 +221,7 @@ function XmppConnection(options) {
                     var event = bd.getText();
                     var payload = message.getChild('payload');
                     if (payload) {
-                        data = self.getPayload(payload);
+                        data = this.getPayload(payload);
                     }
                     // handle push notification
                     if (event == 'push-notification' && typeof data != 'undefined') {
@@ -230,9 +229,9 @@ function XmppConnection(options) {
                         var data = data.data;
                     }
                     if (typeof data != 'undefined') {
-                        self.trigger(event, data);
+                        this.trigger(event, data);
                     } else {
-                        self.trigger(event);
+                        this.trigger(event);
                     }
                 }
             } catch(e) {
@@ -240,23 +239,22 @@ function XmppConnection(options) {
             }
         },
         onPresence: function(presence) {
-            var self = this;
             try {
                 debug('onPresence: ' + presence.toString());
                 var jid = presence.attrs.from;
                 if (jid) {
                     var uid = jid.substr(jid.indexOf('/') + 1);
                     var type = presence.attrs.type;
-                    if (uid == self.uid) {
+                    if (uid == this.uid) {
                         if (type == 'error') {
                             var err = presence.getChild('error');
                             if (err) {
                                 console.error('Error: ' + err.getText());
                             }
                         } else {
-                            debug('Successfully joined the room: ' + self.room);
-                            if (typeof self.onConnected == 'function') {
-                                self.onConnected();
+                            debug('Successfully joined the room: ' + this.room);
+                            if (typeof this.onConnected == 'function') {
+                                this.onConnected();
                             }
                         }
                     } else {
@@ -264,10 +262,10 @@ function XmppConnection(options) {
                             case 'error':
                                 break;
                             case 'unavailable':
-                                self.trigger('user-offline', uid);
+                                this.trigger('user-offline', uid);
                                 break;
                             default:
-                                self.trigger('user-online', uid);
+                                this.trigger('user-online', uid);
                                 break;
                         }
                     }
@@ -277,7 +275,6 @@ function XmppConnection(options) {
             }
         },
         onRoster: function(roster) {
-            var self = this;
             try {
                 debug('onRooster: ' + roster.toString());
             } catch(e) {
@@ -285,27 +282,25 @@ function XmppConnection(options) {
             }
         },
         on: function(event, handler) {
-            var self = this;
-            self.events.push({ name: event, handler: handler });
+            this.events.push({name: event, handler: handler});
         },
         emit: function(event, data) {
-            var self = this;
-            if (self.con) {
-                var msg = new xmpp.Stanza('message', {
-                    to: self.room,
+            if (this.con) {
+                const msg = new xmpp.Stanza('message', {
+                    to: this.room,
                     type: 'groupchat'
                 }).c('body').t(event).root();
-                if (self._to) {
+                if (this._to) {
                     if (typeof data == 'undefined') {
                         var data = {}
                     }
-                    data.uid = self._to;
-                    self._to = null;
+                    data.uid = this._to;
+                    this._to = null;
                 }
                 if (data) {
-                    self.buildPayload(msg.c('payload'), data);
+                    this.buildPayload(msg.c('payload'), data);
                 }
-                self.con.send(msg);
+                this.con.send(msg);
             }
         },
         to: function(uid) {

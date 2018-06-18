@@ -1,4 +1,6 @@
 /**
+ * The MIT License (MIT)
+ *
  * Copyright (c) 2014-2017 Toha <tohenk@yahoo.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
@@ -26,7 +28,7 @@ global.ENV_CONFIG = 'NT_APP_CONFIG';
 
 // === module dependencies ===
 
-var
+const
     path        = require('path'),
     cmd         = require('./lib/cmd');
     
@@ -39,7 +41,7 @@ cmd.addVar('logdir', 'l', 'Set the log file location', 'directory');
 
 // === include app handler ===
 
-var
+const
     socketapp   = require('./server/socket')(),
     xmppapp     = require('./server/xmpp')();
 
@@ -84,7 +86,6 @@ function usage() {
     console.log('    }');
     console.log('}');
     console.log('');
-
     return true;
 }
 

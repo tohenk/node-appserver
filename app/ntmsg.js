@@ -1,4 +1,6 @@
 /**
+ * The MIT License (MIT)
+ *
  * Copyright (c) 2016-2017 Toha <tohenk@yahoo.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
@@ -20,17 +22,17 @@
  * SOFTWARE.
  */
 
-var fs      = require('fs');
-var path    = require('path');
-var util    = require('../lib/util');
-var client  = require('../lib/ntgw.client');
+const fs      = require('fs');
+const path    = require('path');
+const util    = require('../lib/util');
+const client  = require('../lib/ntgw.client');
 
 module.exports = exports = MessagingServer;
 
-var Connections = {};
+const Connections = {};
 
 function MessagingServer(appserver, factory, logger, options) {
-    var app = {
+    const app = {
         CON_SERVER: 1,
         CON_CLIENT: 2,
         con: null,
@@ -42,137 +44,126 @@ function MessagingServer(appserver, factory, logger, options) {
         emailCmd: null,
         userNotifierCmd: null,
         log: function() {
-            var args = Array.from(arguments);
+            const args = Array.from(arguments);
             if (args.length) args[0] = util.formatDate(new Date(), '[yyyy-MM-dd HH:mm:ss.zzz]') + ' ' + args[0];
             logger.log.apply(null, args);
         },
         error: function() {
-            var args = Array.from(arguments);
+            const args = Array.from(arguments);
             if (args.length) args[0] = util.formatDate(new Date(), '[yyyy-MM-dd HH:mm:ss.zzz]') + ' ' + args[0];
             logger.error.apply(null, args);
         },
         getPaths: function() {
-            var self = this;
             return [__dirname, path.dirname(appserver.config)];
         },
         getTextCmd: function(config) {
-            var self = this;
-            if (self.textCmd == null) {
-                self.textCmd = require('../lib/command')(config, {
-                    paths: self.getPaths(),
+            if (this.textCmd == null) {
+                this.textCmd = require('../lib/command')(config, {
+                    paths: this.getPaths(),
                     args: ['ntucp:messaging', '--application=%APP%', '--env=%ENV%', '%CMD%', '%DATA%'],
                     values: {
                         'APP': 'frontend',
                         'ENV': typeof v8debug == 'object' ? 'dev' : 'prod'
                     }
                 });
-                console.log('Text client using %s...', self.textCmd.getId());
+                console.log('Text client using %s...', this.textCmd.getId());
             }
-            return self.textCmd;
+            return this.textCmd;
         },
         getEmailCmd: function(config) {
-            var self = this;
-            if (self.emailCmd == null) {
-                self.emailCmd = require('../lib/command')(config, {
-                    paths: self.getPaths(),
+            if (this.emailCmd == null) {
+                this.emailCmd = require('../lib/command')(config, {
+                    paths: this.getPaths(),
                     args: ['ntucp:deliver-email', '--application=%APP%', '--env=%ENV%', '%HASH%'],
                     values: {
                         'APP': 'frontend',
                         'ENV': typeof v8debug == 'object' ? 'dev' : 'prod'
                     }
                 });
-                console.log('Email delivery using %s...', self.emailCmd.getId());
+                console.log('Email delivery using %s...', this.emailCmd.getId());
             }
-            return self.emailCmd;
+            return this.emailCmd;
         },
         getUserNotifierCmd: function(config) {
-            var self = this;
-            if (self.userNotifierCmd == null) {
-                self.userNotifierCmd = require('../lib/command')(config, {
-                    paths: self.getPaths(),
+            if (this.userNotifierCmd == null) {
+                this.userNotifierCmd = require('../lib/command')(config, {
+                    paths: this.getPaths(),
                     args: ['ntucp:signin-notify', '--application=%APP%', '--env=%ENV%', '%ACTION%', '%DATA%'],
                     values: {
                         'APP': 'frontend',
                         'ENV': typeof v8debug == 'object' ? 'dev' : 'prod'
                     }
                 });
-                console.log('Signin notifier using %s...', self.userNotifierCmd.getId());
+                console.log('Signin notifier using %s...', this.userNotifierCmd.getId());
             }
-            return self.userNotifierCmd;
+            return this.userNotifierCmd;
         },
         execCmd: function(cmd, values) {
-            var self = this;
-            var p = cmd.exec(values);
-            p.on('message', function(data) {
+            const p = cmd.exec(values);
+            p.on('message', (data) => {
                 console.log('Message from process: %s', JSON.stringify(data));
             });
-            p.on('exit', function(code) {
-                self.log('Result %s...', code);
+            p.on('exit', (code) => {
+                this.log('Result %s...', code);
             });
-            p.stdout.on('data', function(line) {
+            p.stdout.on('data', (line) => {
                 var line = util.cleanBuffer(line);
-                self.log(line);
+                this.log(line);
             });
-            p.stderr.on('data', function(line) {
+            p.stderr.on('data', (line) => {
                 var line = util.cleanBuffer(line);
-                self.log(line);
+                this.log(line);
             });
         },
         connectTextServer: function() {
-            var self = this;
-            if (typeof self.options['text-server'] == 'undefined') return;
-            if (null == self.textClient) {
-                var params = self.options['text-server'];
-                params.log = function() {
-                    // use error log for text server logs
-                    self.error.apply(self, Array.from(arguments));
-                }
-                if (typeof self.options['text-client'] != 'undefined') {
-                    var cmd = self.getTextCmd(self.options['text-client']);
-                    params.delivered = function(hash, number, code, sent, received) {
-                        self.log('%s: Delivery status for %s is %s', hash, number, code);
-                        self.execCmd(cmd, {
+            if (typeof this.options['text-server'] == 'undefined') return;
+            if (null == this.textClient) {
+                const params = this.options['text-server'];
+                params.log = this.error;
+                if (typeof this.options['text-client'] != 'undefined') {
+                    var cmd = this.getTextCmd(this.options['text-client']);
+                    params.delivered = (hash, number, code, sent, received) => {
+                        this.log('%s: Delivery status for %s is %s', hash, number, code);
+                        this.execCmd(cmd, {
                             CMD: 'DELV',
                             DATA: JSON.stringify({hash: hash, number: number, code: code, sent: sent, received: received})
                         });
                     }
-                    params.message = function(date, number, message, hash) {
-                        self.log('%s: New message from %s', hash, number);
-                        self.execCmd(cmd, {
+                    params.message = (date, number, message, hash) => {
+                        this.log('%s: New message from %s', hash, number);
+                        this.execCmd(cmd, {
                             CMD: 'MESG',
                             DATA: JSON.stringify({date: date, number: number, message: message, hash: hash})
                         });
                     }
                 }
-                self.textClient = new client.connect(params);
-                if (fs.existsSync(self.queueData)) {
-                    var queues = JSON.parse(fs.readFileSync(self.queueData));
+                this.textClient = new client.connect(params);
+                if (fs.existsSync(this.queueData)) {
+                    var queues = JSON.parse(fs.readFileSync(this.queueData));
                     for (var i = 0; i < queues.length; i++) {
-                        self.textClient.queues.push(queues[i]);
+                        this.textClient.queues.push(queues[i]);
                     }
-                    fs.unlinkSync(self.queueData);
-                    self.log('%s queue(s) loaded from %s...', queues.length, this.queueData);
+                    fs.unlinkSync(this.queueData);
+                    this.log('%s queue(s) loaded from %s...', queues.length, this.queueData);
                 }
             }
         },
         deliverEmail: function(hash, attr) {
-            var self = this;
-            if (typeof self.options['email-sender'] != 'undefined') {
-                var cmd = self.getEmailCmd(self.options['email-sender']);
-                var params = {
+            if (typeof this.options['email-sender'] != 'undefined') {
+                const cmd = this.getEmailCmd(this.options['email-sender']);
+                const params = {
                     HASH: hash
                 };
                 if (typeof attr != 'undefined') {
                     params.ATTR = attr;
                 }
-                self.execCmd(cmd, params);
+                this.execCmd(cmd, params);
             }
         },
         notifySignin: function(action, data) {
-            var self = this;
-            if (typeof self.options['user-notifier'] != 'undefined') {
-                var cmd = self.getUserNotifierCmd(self.options['user-notifier']);
-                self.execCmd(cmd, {
+            if (typeof this.options['user-notifier'] != 'undefined') {
+                const cmd = this.getUserNotifierCmd(this.options['user-notifier']);
+                this.execCmd(cmd, {
                     ACTION: action,
                     DATA: JSON.stringify(data)
                 });
@@ -217,154 +208,148 @@ function MessagingServer(appserver, factory, logger, options) {
             }
         },
         handleServerCon: function(con) {
-            var self = this;
-            con.on('whos-online', function() {
-                self.log('%s: [Server] Query whos-online...', con.id);
-                var users = self.getUsers();
+            con.on('whos-online', () => {
+                this.log('%s: [Server] Query whos-online...', con.id);
+                var users = this.getUsers();
                 con.emit('whos-online', users);
                 for (var i = 0; i < users.length; i++) {
-                    self.log('%s: [Server] User: %s, time: %d', con.id, users[i].uid, users[i].time);
+                    this.log('%s: [Server] User: %s, time: %d', con.id, users[i].uid, users[i].time);
                 }
             });
-            con.on('notification', function(data) {
-                self.log('%s: [Server] New notification for %s...', con.id, data.uid);
-                var notif = {
+            con.on('notification', (data) => {
+                this.log('%s: [Server] New notification for %s...', con.id, data.uid);
+                const notif = {
                     message: data.message
                 }
                 if (data.code) notif.code = data.code;
                 if (data.referer) notif.referer = data.referer;
-                self.con.to(data.uid).emit('notification', notif);
+                this.con.to(data.uid).emit('notification', notif);
             });
-            con.on('push-notification', function(data) {
-                self.log('%s: [Server] Push notification: %s...', con.id, JSON.stringify(data));
+            con.on('push-notification', (data) => {
+                this.log('%s: [Server] Push notification: %s...', con.id, JSON.stringify(data));
                 if (typeof data.name != 'undefined') {
-                    self.con.emit(data.name, typeof data.data != 'undefined' ? data.data : {});
+                    this.con.emit(data.name, typeof data.data != 'undefined' ? data.data : {});
                 }
             });
-            con.on('message', function(data) {
-                self.log('%s: [Server] New message for %s...', con.id, data.uid);
-                self.con.to(data.uid).emit('message');
+            con.on('message', (data) => {
+                this.log('%s: [Server] New message for %s...', con.id, data.uid);
+                this.con.to(data.uid).emit('message');
             });
-            con.on('text-message', function(data) {
-                self.log('%s: [Server] Send text to %s "%s"...', con.id, data.number, data.message);
-                if (self.textClient) {
+            con.on('text-message', (data) => {
+                this.log('%s: [Server] Send text to %s "%s"...', con.id, data.number, data.message);
+                if (this.textClient) {
                     if (data.attr) {
-                        self.textClient.sendText(data.number, data.message, data.hash, data.attr);
+                        this.textClient.sendText(data.number, data.message, data.hash, data.attr);
                     } else {
-                        self.textClient.sendText(data.number, data.message, data.hash);
+                        this.textClient.sendText(data.number, data.message, data.hash);
                     }
                 }
             });
-            con.on('deliver-email', function(data) {
-                self.log('%s: [Server] Deliver email %s...', con.id, data.hash);
+            con.on('deliver-email', (data) => {
+                selthis.log('%s: [Server] Deliver email %s...', con.id, data.hash);
                 if (data.attr) {
-                    self.deliverEmail(data.hash, data.attr);
+                    this.deliverEmail(data.hash, data.attr);
                 } else {
-                    self.deliverEmail(data.hash);
+                    this.deliverEmail(data.hash);
                 }
             });
-            con.on('user-signin', function(data) {
-                self.log('%s: [Server] User signin %s...', con.id, data.username);
-                self.notifySignin('SIGNIN', data);
+            con.on('user-signin', (data) => {
+                this.log('%s: [Server] User signin %s...', con.id, data.username);
+                this.notifySignin('SIGNIN', data);
             });
-            con.on('user-signout', function(data) {
-                self.log('%s: [Server] User signout %s...', con.id, data.username);
-                self.notifySignin('SIGNOUT', data);
+            con.on('user-signout', (data) => {
+                this.log('%s: [Server] User signout %s...', con.id, data.username);
+                this.notifySignin('SIGNOUT', data);
             });
         },
         handleClientCon: function(con) {
-            var self = this;
-            con.on('notification-read', function(data) {
+            con.on('notification-read', (data) => {
                 if (data.uid) {
-                    self.con.to(data.uid).emit('notification-read', data);
+                    this.con.to(data.uid).emit('notification-read', data);
                 }
             });
-            con.on('message-sent', function(data) {
+            con.on('message-sent', (data) => {
                 if (data.uid) {
-                    self.con.to(data.uid).emit('message-sent', data);
+                    this.con.to(data.uid).emit('message-sent', data);
                 }
             });
         },
         setupCon: function(con) {
-            var self = this;
             // disconnect if not registered within timeout
-            var t = setTimeout(function() {
+            const t = setTimeout(function() {
                 con.disconnect(true);
-            }, self.registerTimeout * 1000);
-            con.on('register', function(data) {
+            }, this.registerTimeout * 1000);
+            con.on('register', (data) => {
                 var dismiss = true;
-                var info = {};
+                const info = {};
                 // is it a server connection?
                 if (data.sid) {
-                    if (data.sid == self.serverKey) {
+                    if (data.sid == this.serverKey) {
                         dismiss = false;
                         info.sid = data.sid;
-                        info.type = self.CON_SERVER;
-                        con.join(self.serverRoom);
-                        self.handleServerCon(con);
-                        self.log('%s: Server connected...', con.id);
+                        info.type = this.CON_SERVER;
+                        con.join(this.serverRoom);
+                        this.handleServerCon(con);
+                        this.log('%s: Server connected...', con.id);
                     } else {
-                        self.log('%s: Server didn\'t send correct key...', con.id);
+                        this.log('%s: Server didn\'t send correct key...', con.id);
                     }
                 } else if (data.uid) {
                     dismiss = false;
                     info.uid = data.uid;
-                    info.type = self.CON_CLIENT;
+                    info.type = this.CON_CLIENT;
                     con.join(data.uid);
-                    self.handleClientCon(con);
+                    this.handleClientCon(con);
                     // notify other users someone is online
-                    self.con.emit('user-online', data.uid);
-                    self.log('%s: User %s connected...', con.id, data.uid);
+                    this.con.emit('user-online', data.uid);
+                    this.log('%s: User %s connected...', con.id, data.uid);
                 } else {
-                    self.log('%s: Invalid registration...', con.id, data.uid);
+                    this.log('%s: Invalid registration...', con.id, data.uid);
                 }
                 if (dismiss) {
                     con.disconnect(true);
-                    self.log('%s: Forced disconnect...', con.id);
+                    this.log('%s: Forced disconnect...', con.id);
                 } else {
-                    self.addCon(con, info);
+                    this.addCon(con, info);
                     clearTimeout(t);
                 }
             });
-            con.on('disconnect', function() {
-                self.removeCon(con);
+            con.on('disconnect', () => {
+                this.removeCon(con);
             });
         },
         listen: function(con) {
-            var self = this;
             if (appserver.id == 'socket.io') {
-                con.on('connection', function(client) {
-                    self.setupCon(client);
+                con.on('connection', (client) => {
+                    this.setupCon(client);
                 });
             } else {
-                self.handleServerCon(con);
+                this.handleServerCon(con);
             }
         },
         doClose: function(server) {
-            var self = this;
-            if (self.textClient && self.textClient.queues.length) {
-                fs.writeFileSync(self.queueData, JSON.stringify(self.textClient.queues));
-                self.log('Queue saved to %s...', this.queueData);
+            if (this.textClient && this.textClient.queues.length) {
+                fs.writeFileSync(this.queueData, JSON.stringify(this.textClient.queues));
+                this.log('Queue saved to %s...', this.queueData);
             }
         },
         init: function() {
-            var self = this;
             if (appserver.id == 'socket.io') {
-                if (typeof self.options.key == 'undefined') {
+                if (typeof this.options.key == 'undefined') {
                     throw new Error('Server key not defined!');
                 }
-                self.serverKey = self.options.key;
+                this.serverKey = this.options.key;
             }
-            if (typeof self.options.timeout != 'undefined') {
-                self.registerTimeout = self.options.timeout;
+            if (typeof this.options.timeout != 'undefined') {
+                this.registerTimeout = this.options.timeout;
             }
-            var ns = self.options.namespace || null;
-            self.con = factory(ns);
-            self.listen(self.con);
-            self.connectTextServer();
-            self.queueData = path.dirname(appserver.config) + path.sep + 'queue' + path.sep + 'text.json';
-            if (!fs.existsSync(path.dirname(self.queueData))) {
-                fs.mkdirSync(path.dirname(self.queueData));
+            var ns = this.options.namespace || null;
+            this.con = factory(ns);
+            this.listen(this.con);
+            this.connectTextServer();
+            this.queueData = path.join(path.dirname(appserver.config), 'queue', 'text.json');
+            if (!fs.existsSync(path.dirname(this.queueData))) {
+                fs.mkdirSync(path.dirname(this.queueData));
             }
             return this;
         }

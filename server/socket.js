@@ -1,4 +1,6 @@
 /**
+ * The MIT License (MIT)
+ *
  * Copyright (c) 2016-2017 Toha <tohenk@yahoo.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
@@ -24,14 +26,14 @@
  * App Server Handler for socket.io
  */
 
-var fs    = require('fs');
-var path  = require('path');
-var cmd   = require('./../lib/cmd');
-var util  = require('./../lib/util');
+const fs    = require('fs');
+const path  = require('path');
+const cmd   = require('./../lib/cmd');
+const util  = require('./../lib/util');
 
 module.exports = exports = AppServer;
 
-var Servers = {};
+const Servers = {};
 
 cmd.addVar('port', 'p', 'Specify server listen port, default is port 8080', 'port');
 cmd.addBool('secure', 's', 'Use HTTPS server');
@@ -40,10 +42,9 @@ cmd.addVar('ssl-cert', '', 'Set SSL public key');
 cmd.addVar('ssl-ca', '', 'Set SSL CA key');
 
 function AppServer() {
-    var server = {
+    const server = {
         id: 'socket.io',
         create: function(options) {
-            var self = this;
             var server;
             var options = options || {};
             var port = options.port || cmd.get('port');
@@ -69,25 +70,25 @@ function AppServer() {
                     throw new Error(err);
                 }
             }
-            var f = function() {
-                console.log("%s server listening on %s...", secure ? 'HTTPS' : 'HTTP', self.getAddress(server));
+            const f = () => {
+                console.log("%s server listening on %s...", secure ? 'HTTPS' : 'HTTP', this.getAddress(server));
                 if (typeof options.callback == 'function') {
                     options.callback(server);
                 }
             }
             if (secure) {
-                var c = {
+                const c = {
                     key: fs.readFileSync(cmd.get('ssl-key')),
                     cert: fs.readFileSync(cmd.get('ssl-cert'))
                 };
                 if (cmd.get('ssl-ca')) {
                     c.ca = fs.readFileSync(cmd.get('ssl-ca'));
                 }
-                var https = require('https');
+                const https = require('https');
                 server = https.createServer(c);
                 server.secure = true;
             } else {
-                var http = require('http');
+                const http = require('http');
                 server = http.createServer();
                 server.secure = false;
             }
@@ -102,51 +103,45 @@ function AppServer() {
         },
         getAddress: function(server) {
             var addr = server.address();
-
             return addr.family == 'IPv4' ? addr.address : '[' + addr.address + ']' + ':' + addr.port;
         },
         createApp: function(server, name, options) {
             if (!server) {
                 throw new Error('No server available, probably wrong configuration.');
             }
-            var self = this;
             var title = options.title || name;
             var module = options.module;
             var namespace = options.path;
             var params = options.params || {};
-            var socket = this.createSocket(server);
-            var factory = function(ns, options) {
-                var tmp = [];
+            var port = options.port;
+            const socket = this.createSocket(server, port);
+            const factory = (ns, options) => {
+                const tmp = [];
                 if (namespace) tmp.push(namespace);
                 if (ns) tmp.push(ns);
-                var s = '/' + tmp.join('/');
-                var addr = server.address();
-                console.log('Socket listening on %s%s', self.getAddress(server), s);
-
+                const s = '/' + tmp.join('/');
                 return socketWrap(tmp.length ? socket.of(s) : socket.sockets, options);
             }
-            var logdir = path.resolve(path.dirname(this.config), options.logdir ? options.logdir : cmd.get('logdir'));
-            var stdout = fs.createWriteStream(logdir + path.sep + name + '.log');
-            var stderr = fs.createWriteStream(logdir + path.sep + name + '-error.log');
-            var logger = new console.Console(stdout, stderr);
+            const logdir = path.resolve(path.dirname(this.config), options.logdir ? options.logdir : cmd.get('logdir'));
+            const stdout = fs.createWriteStream(logdir + path.sep + name + '.log');
+            const stderr = fs.createWriteStream(logdir + path.sep + name + '-error.log');
+            const logger = new console.Console(stdout, stderr);
             console.log('');
             console.log(title);
             console.log('='.repeat(79));
             console.log('');
-            var instance = require('./../' + module)(this, factory, logger, params);
+            const instance = require('./../' + module)(this, factory, logger, params);
             console.log('');
             console.log('-'.repeat(79));
             instance.name = name;
-            Servers[server.address().port].apps.push(instance);
-
+            Servers[port].apps.push(instance);
             return instance;
         },
-        createSocket: function(server) {
+        createSocket: function(server, port) {
             if (!server) {
                 throw new Error('Socket IO need a server to be assigned.');
             }
             var io = null;
-            var port = server.address().port;
             if (Servers[port]) {
                 io = Servers[port]['io'];
             }
@@ -170,16 +165,15 @@ function AppServer() {
             }
         },
         run: function() {
-            var self = this;
             var cnt = 0;
-            self.config = cmd.get('config') || process.env[global.ENV_CONFIG];
-            if (!self.config) {
-                self.config = path.dirname(process.argv[1]) + path.sep + 'app.json';
+            this.config = cmd.get('config') || process.env[global.ENV_CONFIG];
+            if (!this.config) {
+                this.config = path.dirname(process.argv[1]) + path.sep + 'app.json';
             }
-            console.log('Checking configuration %s', self.config);
-            if (self.config && util.fileExist(self.config)) {
-                console.log('Reading configuration %s', self.config);
-                var apps = JSON.parse(fs.readFileSync(self.config));
+            console.log('Checking configuration %s', this.config);
+            if (this.config && util.fileExist(this.config)) {
+                console.log('Reading configuration %s', this.config);
+                const apps = JSON.parse(fs.readFileSync(this.config));
                 for (name in apps) {
                     var options = apps[name];
                     if (!typeof options == 'object') {
@@ -191,21 +185,22 @@ function AppServer() {
                     if (typeof options.enabled != 'undefined' && !options.enabled) {
                         continue;
                     }
-                    self.server = self.create(options);
-                    self.createApp(self.server, name, options);
+                    if (!options.port) options.port = cmd.get('port') || 8080;
+                    this.server = this.create(options);
+                    this.createApp(this.server, name, options);
                     cnt++;
                 }
                 console.log('');
                 console.log('Running %d applications(s)', cnt);
                 console.log('');
             }
-            process.on('exit', function(code) {
-                self.notifyAppClose();
+            process.on('exit', (code) => {
+                this.notifyAppClose();
             });
-            process.on('SIGTERM', function() {
-                self.notifyAppClose();
+            process.on('SIGTERM', () => {
+                this.notifyAppClose();
             });
-            process.on('SIGINT', function() {
+            process.on('SIGINT', () => {
                 process.exit();
             });
             return cnt;

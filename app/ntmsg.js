@@ -22,6 +22,7 @@
  * SOFTWARE.
  */
 
+const io      = require('socket.io-client');
 const fs      = require('fs');
 const path    = require('path');
 const util    = require('../lib/util');
@@ -43,6 +44,8 @@ function MessagingServer(appserver, factory, logger, options) {
         textCmd: null,
         emailCmd: null,
         userNotifierCmd: null,
+        smsgw: null,
+        smsgwConnected: false,
         log: function() {
             const args = Array.from(arguments);
             if (args.length) args[0] = util.formatDate(new Date(), '[yyyy-MM-dd HH:mm:ss.zzz]') + ' ' + args[0];
@@ -121,7 +124,7 @@ function MessagingServer(appserver, factory, logger, options) {
                 const params = this.options['text-server'];
                 params.log = this.error;
                 if (typeof this.options['text-client'] != 'undefined') {
-                    var cmd = this.getTextCmd(this.options['text-client']);
+                    const cmd = this.getTextCmd(this.options['text-client']);
                     params.delivered = (hash, number, code, sent, received) => {
                         this.log('%s: Delivery status for %s is %s', hash, number, code);
                         this.execCmd(cmd, {
@@ -145,6 +148,51 @@ function MessagingServer(appserver, factory, logger, options) {
                     }
                     fs.unlinkSync(this.queueData);
                     this.log('%s queue(s) loaded from %s...', queues.length, this.queueData);
+                }
+            }
+        },
+        connectSMSGateway: function() {
+            if (typeof this.options['smsgw'] == 'undefined') return;
+            if (null == this.smsgw) {
+                const params = this.options['smsgw'];
+                const url = params.url;
+                this.smsgw = io(url);
+                this.smsgw.on('connect', () => {
+                    console.log('Connected to SMS Gateway at %s', url);
+                    this.smsgwConnected = true;
+                    this.smsgw.emit('auth', params.secret);
+                });
+                this.smsgw.on('disconnect', () => {
+                    console.log('Disconnected from SMS Gateway at %s', url);
+                    this.smsgwConnected = false;
+                });
+                this.smsgw.on('auth', (success) => {
+                    if (!success) {
+                        console.log('Authentication with SMS Gateway failed!');
+                    } else {
+                        if (params.group) {
+                            this.smsgw.emit('group', params.group);
+                        }
+                    }
+                });
+                if (typeof this.options['text-client'] != 'undefined') {
+                    const cmd = this.getTextCmd(this.options['text-client']);
+                    this.smsgw.on('message', (hash, number, message, time) => {
+                        this.log('%s: New message from %s', hash, number);
+                        this.execCmd(cmd, {
+                            CMD: 'MESG',
+                            DATA: JSON.stringify({date: time, number: number, message: message, hash: hash})
+                        });
+                    });
+                    this.smsgw.on('status-report', (data) => {
+                        if (data.hash) {
+                            this.log('%s: Delivery status for %s is %s', data.hash, data.address, data.code);
+                            this.execCmd(cmd, {
+                                CMD: 'DELV',
+                                DATA: JSON.stringify({hash: data.hash, number: data.address, code: data.code, sent: data.sent, received: data.received})
+                            });
+                        }
+                    });
                 }
             }
         },
@@ -242,6 +290,19 @@ function MessagingServer(appserver, factory, logger, options) {
                         this.textClient.sendText(data.number, data.message, data.hash, data.attr);
                     } else {
                         this.textClient.sendText(data.number, data.message, data.hash);
+                    }
+                }
+                if (this.smsgwConnected) {
+                    const msg = {
+                        hash: data.hash,
+                        address: data.number,
+                        data: data.message
+                    }
+                    if (data.attr) {
+                        // resend or checking existing message
+                        this.smsgw.emit('message-retry', msg);
+                    } else {
+                        this.smsgw.emit('message', msg);
                     }
                 }
             });
@@ -347,6 +408,7 @@ function MessagingServer(appserver, factory, logger, options) {
             this.con = factory(ns);
             this.listen(this.con);
             this.connectTextServer();
+            this.connectSMSGateway();
             this.queueData = path.join(path.dirname(appserver.config), 'queue', 'text.json');
             if (!fs.existsSync(path.dirname(this.queueData))) {
                 fs.mkdirSync(path.dirname(this.queueData));

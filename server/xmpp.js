@@ -67,7 +67,7 @@ function AppServer() {
                 this.config = path.dirname(process.argv[1]) + path.sep + 'app.json';
             }
             console.log('Checking configuration %s', this.config);
-            if (self.config && util.fileExist(this.config)) {
+            if (this.config && util.fileExist(this.config)) {
                 console.log('Reading configuration %s', this.config);
                 const apps = JSON.parse(fs.readFileSync(this.config));
                 for (name in apps) {
@@ -81,7 +81,7 @@ function AppServer() {
                     if (typeof options.enabled != 'undefined' && !options.enabled) {
                         continue;
                     }
-                    self.createApp(name, options);
+                    this.createApp(name, options);
                     cnt++;
                 }
                 console.log('');
@@ -113,7 +113,7 @@ function XmppConnection(options) {
             this.con.on('online', (data) => {
                 this.id = data.jid;
                 const presence = new xmpp.Stanza('presence', {
-                    to: self.room + '/' + self.uid
+                    to: this.room + '/' + this.uid
                 });
                 presence.c('x', { xmlns: 'http://jabber.org/protocol/muc' });
                 this.con.send(presence);

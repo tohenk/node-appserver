@@ -246,7 +246,7 @@ function MessagingServer(appserver, factory, logger, options) {
                 }
             });
             con.on('deliver-email', (data) => {
-                selthis.log('%s: [Server] Deliver email %s...', con.id, data.hash);
+                this.log('%s: [Server] Deliver email %s...', con.id, data.hash);
                 if (data.attr) {
                     this.deliverEmail(data.hash, data.attr);
                 } else {

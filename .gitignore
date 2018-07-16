@@ -1,4 +1,6 @@
+logs/
 node_modules/
+queue/
 .settings/
 .project
 .buildpath

@@ -27,6 +27,7 @@ const fs      = require('fs');
 const path    = require('path');
 const util    = require('../lib/util');
 const client  = require('../lib/ntgw.client');
+const Queue   = require('../lib/queue');
 
 module.exports = exports = MessagingServer;
 
@@ -141,13 +142,13 @@ function MessagingServer(appserver, factory, logger, options) {
                     }
                 }
                 this.textClient = new client.connect(params);
-                if (fs.existsSync(this.queueData)) {
-                    var queues = JSON.parse(fs.readFileSync(this.queueData));
-                    for (var i = 0; i < queues.length; i++) {
-                        this.textClient.queues.push(queues[i]);
+                if (fs.existsSync(this.textQueueFilename)) {
+                    const queues = JSON.parse(fs.readFileSync(this.textQueueFilename));
+                    if (queues.length) {
+                        Array.prototype.push.apply(this.textClient.queues, queues.length);
+                        fs.writeFileSync(this.textQueueFilename, JSON.stringify([]));
+                        this.log('TEXT: %s queue(s) loaded from %s...', queues.length, this.textQueueFilename);
                     }
-                    fs.unlinkSync(this.queueData);
-                    this.log('%s queue(s) loaded from %s...', queues.length, this.queueData);
                 }
             }
         },
@@ -194,6 +195,31 @@ function MessagingServer(appserver, factory, logger, options) {
                         }
                     });
                 }
+                const queues = [];
+                if (fs.existsSync(this.gwQueueFilename)) {
+                    const savedQueues = JSON.parse(fs.readFileSync(this.gwQueueFilename));
+                    if (savedQueues.length) {
+                        Array.prototype.push.apply(queues, savedQueues);
+                        fs.writeFileSync(this.gwQueueFilename, JSON.stringify([]));
+                        this.log('GW: %s queue(s) loaded from %s...', savedQueues.length, this.gwQueueFilename);
+                    }
+                }
+                this.smsgwq = new Queue(queues, (data) => {
+                    const msg = {
+                        hash: data.hash,
+                        address: data.number,
+                        data: data.message
+                    }
+                    if (data.attr) {
+                        // resend or checking existing message
+                        this.smsgw.emit('message-retry', msg);
+                    } else {
+                        this.smsgw.emit('message', msg);
+                    }
+                    this.smsgwq.next();
+                }, () => {
+                    return this.smsgwConnected;
+                });
             }
         },
         deliverEmail: function(hash, attr) {
@@ -292,19 +318,7 @@ function MessagingServer(appserver, factory, logger, options) {
                         this.textClient.sendText(data.number, data.message, data.hash);
                     }
                 }
-                if (this.smsgwConnected) {
-                    const msg = {
-                        hash: data.hash,
-                        address: data.number,
-                        data: data.message
-                    }
-                    if (data.attr) {
-                        // resend or checking existing message
-                        this.smsgw.emit('message-retry', msg);
-                    } else {
-                        this.smsgw.emit('message', msg);
-                    }
-                }
+                this.smsgwq.requeue([data]);
             });
             con.on('deliver-email', (data) => {
                 this.log('%s: [Server] Deliver email %s...', con.id, data.hash);
@@ -390,8 +404,12 @@ function MessagingServer(appserver, factory, logger, options) {
         },
         doClose: function(server) {
             if (this.textClient && this.textClient.queues.length) {
-                fs.writeFileSync(this.queueData, JSON.stringify(this.textClient.queues));
-                this.log('Queue saved to %s...', this.queueData);
+                fs.writeFileSync(this.textQueueFilename, JSON.stringify(this.textClient.queues));
+                this.log('Text queue saved to %s...', this.textQueueFilename);
+            }
+            if (this.smsgwq && this.smsgwq.queues.length) {
+                fs.writeFileSync(this.gwQueueFilename, JSON.stringify(this.smsgwq.queues));
+                this.log('Gateway queue saved to %s...', this.gwQueueFilename);
             }
         },
         init: function() {
@@ -405,14 +423,16 @@ function MessagingServer(appserver, factory, logger, options) {
                 this.registerTimeout = this.options.timeout;
             }
             var ns = this.options.namespace || null;
+            this.queueDir = path.join(path.dirname(appserver.config), 'queue');
+            if (!fs.existsSync(this.queueDir)) {
+                fs.mkdirSync(this.queueDir);
+            }
+            this.textQueueFilename = path.join(this.queueDir, 'text.json');
+            this.gwQueueFilename = path.join(this.queueDir, 'messages.json');
             this.con = factory(ns);
             this.listen(this.con);
             this.connectTextServer();
             this.connectSMSGateway();
-            this.queueData = path.join(path.dirname(appserver.config), 'queue', 'text.json');
-            if (!fs.existsSync(path.dirname(this.queueData))) {
-                fs.mkdirSync(path.dirname(this.queueData));
-            }
             return this;
         }
     }

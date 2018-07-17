@@ -26,7 +26,6 @@ const io      = require('socket.io-client');
 const fs      = require('fs');
 const path    = require('path');
 const util    = require('../lib/util');
-const client  = require('../lib/ntgw.client');
 const Queue   = require('../lib/queue');
 
 module.exports = exports = MessagingServer;
@@ -41,7 +40,6 @@ function MessagingServer(appserver, factory, logger, options) {
         options: options || {},
         registerTimeout: 60,
         serverRoom: 'server',
-        textClient: null,
         textCmd: null,
         emailCmd: null,
         userNotifierCmd: null,
@@ -118,39 +116,6 @@ function MessagingServer(appserver, factory, logger, options) {
                 var line = util.cleanBuffer(line);
                 this.log(line);
             });
-        },
-        connectTextServer: function() {
-            if (typeof this.options['text-server'] == 'undefined') return;
-            if (null == this.textClient) {
-                const params = this.options['text-server'];
-                params.log = this.error;
-                if (typeof this.options['text-client'] != 'undefined') {
-                    const cmd = this.getTextCmd(this.options['text-client']);
-                    params.delivered = (hash, number, code, sent, received) => {
-                        this.log('%s: Delivery status for %s is %s', hash, number, code);
-                        this.execCmd(cmd, {
-                            CMD: 'DELV',
-                            DATA: JSON.stringify({hash: hash, number: number, code: code, sent: sent, received: received})
-                        });
-                    }
-                    params.message = (date, number, message, hash) => {
-                        this.log('%s: New message from %s', hash, number);
-                        this.execCmd(cmd, {
-                            CMD: 'MESG',
-                            DATA: JSON.stringify({date: date, number: number, message: message, hash: hash})
-                        });
-                    }
-                }
-                this.textClient = new client.connect(params);
-                if (fs.existsSync(this.textQueueFilename)) {
-                    const queues = JSON.parse(fs.readFileSync(this.textQueueFilename));
-                    if (queues.length) {
-                        Array.prototype.push.apply(this.textClient.queues, queues.length);
-                        fs.writeFileSync(this.textQueueFilename, JSON.stringify([]));
-                        this.log('TEXT: %s queue(s) loaded from %s...', queues.length, this.textQueueFilename);
-                    }
-                }
-            }
         },
         connectSMSGateway: function() {
             if (typeof this.options['smsgw'] == 'undefined') return;
@@ -311,13 +276,6 @@ function MessagingServer(appserver, factory, logger, options) {
             });
             con.on('text-message', (data) => {
                 this.log('%s: [Server] Send text to %s "%s"...', con.id, data.number, data.message);
-                if (this.textClient) {
-                    if (data.attr) {
-                        this.textClient.sendText(data.number, data.message, data.hash, data.attr);
-                    } else {
-                        this.textClient.sendText(data.number, data.message, data.hash);
-                    }
-                }
                 this.smsgwq.requeue([data]);
             });
             con.on('deliver-email', (data) => {
@@ -403,10 +361,6 @@ function MessagingServer(appserver, factory, logger, options) {
             }
         },
         doClose: function(server) {
-            if (this.textClient && this.textClient.queues.length) {
-                fs.writeFileSync(this.textQueueFilename, JSON.stringify(this.textClient.queues));
-                this.log('Text queue saved to %s...', this.textQueueFilename);
-            }
             if (this.smsgwq && this.smsgwq.queues.length) {
                 fs.writeFileSync(this.gwQueueFilename, JSON.stringify(this.smsgwq.queues));
                 this.log('Gateway queue saved to %s...', this.gwQueueFilename);
@@ -422,7 +376,7 @@ function MessagingServer(appserver, factory, logger, options) {
             if (typeof this.options.timeout != 'undefined') {
                 this.registerTimeout = this.options.timeout;
             }
-            var ns = this.options.namespace || null;
+            const ns = this.options.namespace || null;
             this.queueDir = path.join(path.dirname(appserver.config), 'queue');
             if (!fs.existsSync(this.queueDir)) {
                 fs.mkdirSync(this.queueDir);
@@ -431,7 +385,6 @@ function MessagingServer(appserver, factory, logger, options) {
             this.gwQueueFilename = path.join(this.queueDir, 'messages.json');
             this.con = factory(ns);
             this.listen(this.con);
-            this.connectTextServer();
             this.connectSMSGateway();
             return this;
         }

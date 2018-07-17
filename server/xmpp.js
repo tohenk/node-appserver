@@ -40,21 +40,21 @@ function AppServer() {
     const server = {
         id: 'xmpp',
         createApp: function(name, options) {
-            var title = options.title || name;
-            var module = options.module;
-            var params = options.params || {};
-            var factory = (ns, params) => {
+            const title = options.title || name;
+            const module = options.module;
+            const params = options.params || {};
+            const factory = (ns, params) => {
                 return XmppConnection(options);
             }
-            var logdir = path.resolve(path.dirname(this.config), options.logdir ? options.logdir : cmd.get('logdir'));
-            var stdout = fs.createWriteStream(logdir + path.sep + name + '.log');
-            var stderr = fs.createWriteStream(logdir + path.sep + name + '-error.log');
-            var logger = new console.Console(stdout, stderr);
+            if (params.logdir == undefined) {
+                params.logdir = path.resolve(path.dirname(this.config),
+                    options.logdir ? options.logdir : cmd.get('logdir'));
+            }
             console.log('');
             console.log(title);
             console.log('='.repeat(79));
             console.log('');
-            const instance = require('./../' + module)(this, factory, logger, params);
+            const instance = require('./../' + module)(this, factory, params);
             console.log('');
             console.log('-'.repeat(79));
             instance.name = name;

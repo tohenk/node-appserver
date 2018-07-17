@@ -32,7 +32,7 @@ module.exports = exports = MessagingServer;
 
 const Connections = {};
 
-function MessagingServer(appserver, factory, logger, options) {
+function MessagingServer(appserver, factory, options) {
     const app = {
         CON_SERVER: 1,
         CON_CLIENT: 2,
@@ -48,12 +48,7 @@ function MessagingServer(appserver, factory, logger, options) {
         log: function() {
             const args = Array.from(arguments);
             if (args.length) args[0] = util.formatDate(new Date(), '[yyyy-MM-dd HH:mm:ss.zzz]') + ' ' + args[0];
-            logger.log.apply(null, args);
-        },
-        error: function() {
-            const args = Array.from(arguments);
-            if (args.length) args[0] = util.formatDate(new Date(), '[yyyy-MM-dd HH:mm:ss.zzz]') + ' ' + args[0];
-            logger.error.apply(null, args);
+            this.logger.log.apply(null, args);
         },
         getPaths: function() {
             return [__dirname, path.dirname(appserver.config)];
@@ -366,6 +361,12 @@ function MessagingServer(appserver, factory, logger, options) {
                 this.log('Gateway queue saved to %s...', this.gwQueueFilename);
             }
         },
+        initializeLogger: function() {
+            this.logdir = this.options.logdir || path.join(__dirname, 'logs');
+            this.logfile = path.join(this.logdir, 'ntmsg.log');
+            this.stdout = new fs.createWriteStream(this.logfile, {flags: 'a'});
+            this.logger = new console.Console(this.stdout);
+        },
         init: function() {
             if (appserver.id == 'socket.io') {
                 if (typeof this.options.key == 'undefined') {
@@ -376,6 +377,7 @@ function MessagingServer(appserver, factory, logger, options) {
             if (typeof this.options.timeout != 'undefined') {
                 this.registerTimeout = this.options.timeout;
             }
+            this.initializeLogger();
             const ns = this.options.namespace || null;
             this.queueDir = path.join(path.dirname(appserver.config), 'queue');
             if (!fs.existsSync(this.queueDir)) {

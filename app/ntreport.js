@@ -22,19 +22,20 @@
  * SOFTWARE.
  */
 
+const fs      = require('fs');
 const path    = require('path');
 const util    = require('../lib/util');
 
 module.exports = exports = ReportServer;
 
-function ReportServer(appserver, factory, logger, options) {
+function ReportServer(appserver, factory, options) {
     const app = {
         options: options || {},
         handlers: {},
         log: function() {
             var args = Array.from(arguments);
             if (args.length) args[0] = util.formatDate(new Date(), '[yyyy-MM-dd HH:mm:ss.zzz]') + ' ' + args[0];
-            logger.log.apply(null, args);
+            this.logger.log.apply(null, args);
         },
         handleCon: function(con, cmd) {
             con.on('report', (data) => {
@@ -80,7 +81,14 @@ function ReportServer(appserver, factory, logger, options) {
             this.handlers[name] = cmd;
             return cmd;
         },
+        initializeLogger: function() {
+            this.logdir = this.options.logdir || path.join(__dirname, 'logs');
+            this.logfile = path.join(this.logdir, 'ntreport.log');
+            this.stdout = new fs.createWriteStream(this.logfile, {flags: 'a'});
+            this.logger = new console.Console(this.stdout);
+        },
         init: function() {
+            this.initializeLogger();
             for (var ns in this.options) {
                 var cmd = this.createHandler(ns, this.options[ns]);
                 console.log('Serving %s...', ns);

@@ -28,8 +28,9 @@ const util    = require('../lib/util');
 
 module.exports = exports = ReportServer;
 
-function ReportServer(appserver, factory, options) {
+function ReportServer(appserver, factory, configs, options) {
     const app = {
+        configs: configs || {},
         options: options || {},
         handlers: {},
         log: function() {
@@ -89,8 +90,8 @@ function ReportServer(appserver, factory, options) {
         },
         init: function() {
             this.initializeLogger();
-            for (var ns in this.options) {
-                var cmd = this.createHandler(ns, this.options[ns]);
+            for (var ns in this.configs) {
+                var cmd = this.createHandler(ns, this.configs[ns]);
                 console.log('Serving %s...', ns);
                 console.log('Using command %s...', cmd.getId());
             }

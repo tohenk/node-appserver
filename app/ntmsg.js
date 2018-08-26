@@ -32,11 +32,12 @@ module.exports = exports = MessagingServer;
 
 const Connections = {};
 
-function MessagingServer(appserver, factory, options) {
+function MessagingServer(appserver, factory, configs, options) {
     const app = {
         CON_SERVER: 1,
         CON_CLIENT: 2,
         con: null,
+        configs: configs || {},
         options: options || {},
         registerTimeout: 60,
         serverRoom: 'server',
@@ -113,9 +114,9 @@ function MessagingServer(appserver, factory, options) {
             });
         },
         connectSMSGateway: function() {
-            if (typeof this.options['smsgw'] == 'undefined') return;
+            if (typeof this.configs['smsgw'] == 'undefined') return;
             if (null == this.smsgw) {
-                const params = this.options['smsgw'];
+                const params = this.configs['smsgw'];
                 const url = params.url;
                 this.smsgw = io(url);
                 this.smsgw.on('connect', () => {
@@ -136,8 +137,8 @@ function MessagingServer(appserver, factory, options) {
                         }
                     }
                 });
-                if (typeof this.options['text-client'] != 'undefined') {
-                    const cmd = this.getTextCmd(this.options['text-client']);
+                if (typeof this.configs['text-client'] != 'undefined') {
+                    const cmd = this.getTextCmd(this.configs['text-client']);
                     this.smsgw.on('message', (hash, number, message, time) => {
                         this.log('%s: New message from %s', hash, number);
                         this.execCmd(cmd, {
@@ -183,8 +184,8 @@ function MessagingServer(appserver, factory, options) {
             }
         },
         deliverEmail: function(hash, attr) {
-            if (typeof this.options['email-sender'] != 'undefined') {
-                const cmd = this.getEmailCmd(this.options['email-sender']);
+            if (typeof this.configs['email-sender'] != 'undefined') {
+                const cmd = this.getEmailCmd(this.configs['email-sender']);
                 const params = {
                     HASH: hash
                 };
@@ -195,8 +196,8 @@ function MessagingServer(appserver, factory, options) {
             }
         },
         notifySignin: function(action, data) {
-            if (typeof this.options['user-notifier'] != 'undefined') {
-                const cmd = this.getUserNotifierCmd(this.options['user-notifier']);
+            if (typeof this.configs['user-notifier'] != 'undefined') {
+                const cmd = this.getUserNotifierCmd(this.configs['user-notifier']);
                 this.execCmd(cmd, {
                     ACTION: action,
                     DATA: JSON.stringify(data)
@@ -369,16 +370,16 @@ function MessagingServer(appserver, factory, options) {
         },
         init: function() {
             if (appserver.id == 'socket.io') {
-                if (typeof this.options.key == 'undefined') {
+                if (typeof this.configs.key == 'undefined') {
                     throw new Error('Server key not defined!');
                 }
-                this.serverKey = this.options.key;
+                this.serverKey = this.configs.key;
             }
-            if (typeof this.options.timeout != 'undefined') {
-                this.registerTimeout = this.options.timeout;
+            if (typeof this.configs.timeout != 'undefined') {
+                this.registerTimeout = this.configs.timeout;
             }
             this.initializeLogger();
-            const ns = this.options.namespace || null;
+            const ns = this.configs.namespace || null;
             this.queueDir = path.join(path.dirname(appserver.config), 'queue');
             if (!fs.existsSync(this.queueDir)) {
                 fs.mkdirSync(this.queueDir);

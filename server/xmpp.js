@@ -42,7 +42,8 @@ function AppServer() {
         createApp: function(name, options) {
             const title = options.title || name;
             const module = options.module;
-            const params = options.params || {};
+            const configs = options.params || {};
+            const params = {};
             const factory = (ns, params) => {
                 return XmppConnection(options);
             }
@@ -54,7 +55,7 @@ function AppServer() {
             console.log(title);
             console.log('='.repeat(79));
             console.log('');
-            const instance = require('./../' + module)(this, factory, params);
+            const instance = require('./../' + module)(this, factory, configs, params);
             console.log('');
             console.log('-'.repeat(79));
             instance.name = name;

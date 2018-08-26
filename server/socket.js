@@ -112,7 +112,8 @@ function AppServer() {
             const title = options.title || name;
             const module = options.module;
             const namespace = options.path;
-            const params = options.params || {};
+            const configs = options.params || {};
+            const params = {};
             const port = options.port;
             const socket = this.createSocket(server, port);
             const factory = (ns, options) => {
@@ -130,7 +131,7 @@ function AppServer() {
             console.log(title);
             console.log('='.repeat(79));
             console.log('');
-            const instance = require('./../' + module)(this, factory, params);
+            const instance = require('./../' + module)(this, factory, configs, params);
             console.log('');
             console.log('-'.repeat(79));
             instance.name = name;

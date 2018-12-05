@@ -1,7 +1,7 @@
 /**
  * The MIT License (MIT)
  *
- * Copyright (c) 2016-2017 Toha <tohenk@yahoo.com>
+ * Copyright (c) 2016-2018 Toha <tohenk@yahoo.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
  * this software and associated documentation files (the "Software"), to deal in
@@ -76,10 +76,10 @@ function AppServer() {
                     if (!typeof options == 'object') {
                         throw new Error('Application configuration must be an object.');
                     }
-                    if (typeof options.module == 'undefined') {
+                    if (options.module == undefined) {
                         throw new Error('Application module for ' + name + ' not defined.');
                     }
-                    if (typeof options.enabled != 'undefined' && !options.enabled) {
+                    if (options.enabled != undefined && !options.enabled) {
                         continue;
                     }
                     this.createApp(name, options);
@@ -196,11 +196,11 @@ function XmppConnection(options) {
                 if (event == ev.name) {
                     if (typeof ev.handler == 'function') {
                         var trigger = true;
-                        if (typeof data != 'undefined' && typeof data.uid != 'undefined' && data.uid != this.uid) {
+                        if (data != undefined && data.uid != undefined && data.uid != this.uid) {
                             trigger = false;
                         }
                         if (trigger) {
-                            if (typeof data == 'undefined') {
+                            if (data == undefined) {
                                 ev.handler();
                             } else {
                                 ev.handler(data);
@@ -225,11 +225,11 @@ function XmppConnection(options) {
                         data = this.getPayload(payload);
                     }
                     // handle push notification
-                    if (event == 'push-notification' && typeof data != 'undefined') {
+                    if (event == 'push-notification' && data != undefined) {
                         var event = data.name;
                         var data = data.data;
                     }
-                    if (typeof data != 'undefined') {
+                    if (data != undefined) {
                         this.trigger(event, data);
                     } else {
                         this.trigger(event);
@@ -292,7 +292,7 @@ function XmppConnection(options) {
                     type: 'groupchat'
                 }).c('body').t(event).root();
                 if (this._to) {
-                    if (typeof data == 'undefined') {
+                    if (data == undefined) {
                         var data = {}
                     }
                     data.uid = this._to;

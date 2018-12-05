@@ -1,7 +1,7 @@
 /**
  * The MIT License (MIT)
  *
- * Copyright (c) 2016-2017 Toha <tohenk@yahoo.com>
+ * Copyright (c) 2016-2018 Toha <tohenk@yahoo.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
  * this software and associated documentation files (the "Software"), to deal in
@@ -180,10 +180,10 @@ function AppServer() {
                     if (!typeof options == 'object') {
                         throw new Error('Application configuration must be an object.');
                     }
-                    if (typeof options.module == 'undefined') {
+                    if (options.module == undefined) {
                         throw new Error('Application module for ' + name + ' not defined.');
                     }
-                    if (typeof options.enabled != 'undefined' && !options.enabled) {
+                    if (options.enabled != undefined && !options.enabled) {
                         continue;
                     }
                     if (!options.port) options.port = cmd.get('port') || 8080;

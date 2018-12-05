@@ -1,7 +1,7 @@
 /**
  * The MIT License (MIT)
  *
- * Copyright (c) 2016-2017 Toha <tohenk@yahoo.com>
+ * Copyright (c) 2016-2018 Toha <tohenk@yahoo.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
  * this software and associated documentation files (the "Software"), to deal in
@@ -97,24 +97,27 @@ function MessagingServer(appserver, factory, configs, options) {
             return this.userNotifierCmd;
         },
         execCmd: function(cmd, values) {
-            const p = cmd.exec(values);
-            p.on('message', (data) => {
-                console.log('Message from process: %s', JSON.stringify(data));
-            });
-            p.on('exit', (code) => {
-                this.log('Result %s...', code);
-            });
-            p.stdout.on('data', (line) => {
-                var line = util.cleanBuffer(line);
-                this.log(line);
-            });
-            p.stderr.on('data', (line) => {
-                var line = util.cleanBuffer(line);
-                this.log(line);
+            return new Promise((resolve, reject) => {
+                const p = cmd.exec(values);
+                p.on('message', (data) => {
+                    console.log('Message from process: %s', JSON.stringify(data));
+                });
+                p.on('exit', (code) => {
+                    this.log('Result %s...', code);
+                    resolve(code);
+                });
+                p.stdout.on('data', (line) => {
+                    var line = util.cleanBuffer(line);
+                    this.log(line);
+                });
+                p.stderr.on('data', (line) => {
+                    var line = util.cleanBuffer(line);
+                    this.log(line);
+                });
             });
         },
         connectSMSGateway: function() {
-            if (typeof this.configs['smsgw'] == 'undefined') return;
+            if (this.configs['smsgw'] == undefined) return;
             if (null == this.smsgw) {
                 const params = this.configs['smsgw'];
                 const url = params.url;
@@ -137,22 +140,16 @@ function MessagingServer(appserver, factory, configs, options) {
                         }
                     }
                 });
-                if (typeof this.configs['text-client'] != 'undefined') {
-                    const cmd = this.getTextCmd(this.configs['text-client']);
+                if (this.configs['text-client'] != undefined) {
+                    this.smscmd = this.getTextCmd(this.configs['text-client']);
                     this.smsgw.on('message', (hash, number, message, time) => {
                         this.log('%s: New message from %s', hash, number);
-                        this.execCmd(cmd, {
-                            CMD: 'MESG',
-                            DATA: JSON.stringify({date: time, number: number, message: message, hash: hash})
-                        });
+                        this.smsQueue('MESG', JSON.stringify({date: time, number: number, message: message, hash: hash}));
                     });
                     this.smsgw.on('status-report', (data) => {
                         if (data.hash) {
                             this.log('%s: Delivery status for %s is %s', data.hash, data.address, data.code);
-                            this.execCmd(cmd, {
-                                CMD: 'DELV',
-                                DATA: JSON.stringify({hash: data.hash, number: data.address, code: data.code, sent: data.sent, received: data.received})
-                            });
+                            this.smsQueue('DELV', JSON.stringify({hash: data.hash, number: data.address, code: data.code, sent: data.sent, received: data.received}));
                         }
                     });
                 }
@@ -183,25 +180,46 @@ function MessagingServer(appserver, factory, configs, options) {
                 });
             }
         },
+        smsQueue: function(cmd, data) {
+            const queue = {
+                CMD: cmd,
+                DATA: data
+            }
+            if (!this.smsq) {
+                this.smsq = new Queue([queue], (q) => {
+                    this.execCmd(this.smscmd, q)
+                        .then(() => {
+                            this.smsq.next();
+                        })
+                    ;
+                });
+            } else {
+                this.smsq.requeue([queue]);
+            }
+        },
         deliverEmail: function(hash, attr) {
-            if (typeof this.configs['email-sender'] != 'undefined') {
+            if (this.configs['email-sender'] != undefined) {
                 const cmd = this.getEmailCmd(this.configs['email-sender']);
                 const params = {
                     HASH: hash
                 };
-                if (typeof attr != 'undefined') {
+                if (attr != undefined) {
                     params.ATTR = attr;
                 }
-                this.execCmd(cmd, params);
+                return this.execCmd(cmd, params);
+            } else {
+                Promise.resolve();
             }
         },
         notifySignin: function(action, data) {
-            if (typeof this.configs['user-notifier'] != 'undefined') {
+            if (this.configs['user-notifier'] != undefined) {
                 const cmd = this.getUserNotifierCmd(this.configs['user-notifier']);
-                this.execCmd(cmd, {
+                return this.execCmd(cmd, {
                     ACTION: action,
                     DATA: JSON.stringify(data)
                 });
+            } else {
+                Promise.resolve();
             }
         },
         getUsers: function() {
@@ -262,8 +280,8 @@ function MessagingServer(appserver, factory, configs, options) {
             });
             con.on('push-notification', (data) => {
                 this.log('%s: [Server] Push notification: %s...', con.id, JSON.stringify(data));
-                if (typeof data.name != 'undefined') {
-                    this.con.emit(data.name, typeof data.data != 'undefined' ? data.data : {});
+                if (data.name != undefined) {
+                    this.con.emit(data.name, data.data != undefined ? data.data : {});
                 }
             });
             con.on('message', (data) => {
@@ -370,12 +388,12 @@ function MessagingServer(appserver, factory, configs, options) {
         },
         init: function() {
             if (appserver.id == 'socket.io') {
-                if (typeof this.configs.key == 'undefined') {
+                if (this.configs.key == undefined) {
                     throw new Error('Server key not defined!');
                 }
                 this.serverKey = this.configs.key;
             }
-            if (typeof this.configs.timeout != 'undefined') {
+            if (this.configs.timeout != undefined) {
                 this.registerTimeout = this.configs.timeout;
             }
             this.initializeLogger();

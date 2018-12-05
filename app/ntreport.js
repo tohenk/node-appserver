@@ -1,7 +1,7 @@
 /**
  * The MIT License (MIT)
  *
- * Copyright (c) 2014-2017 Toha <tohenk@yahoo.com>
+ * Copyright (c) 2014-2018 Toha <tohenk@yahoo.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
  * this software and associated documentation files (the "Software"), to deal in
@@ -41,10 +41,10 @@ function ReportServer(appserver, factory, configs, options) {
         handleCon: function(con, cmd) {
             con.on('report', (data) => {
                 this.log('%s: Generating report %s...', con.id, data.hash);
-                if (typeof cmd == 'undefined' && data.namespace) {
-                    var cmd = this.handlers[data.namespace];
+                if (cmd == undefined && data.namespace) {
+                    cmd = this.handlers[data.namespace];
                 }
-                if (typeof cmd == 'undefined') return;
+                if (cmd == undefined) return;
                 const p = cmd.exec({
                     REPORTID: data.hash
                 });

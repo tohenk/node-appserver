@@ -22,9 +22,9 @@
  * SOFTWARE.
  */
 
-const fs      = require('fs');
 const path    = require('path');
 const util    = require('../lib/util');
+const Logger  = require('../lib/logger');
 
 module.exports = exports = ReportServer;
 
@@ -34,9 +34,7 @@ function ReportServer(appserver, factory, configs, options) {
         options: options || {},
         handlers: {},
         log: function() {
-            var args = Array.from(arguments);
-            if (args.length) args[0] = util.formatDate(new Date(), '[yyyy-MM-dd HH:mm:ss.zzz]') + ' ' + args[0];
-            this.logger.log.apply(null, args);
+            this.logger.log.apply(this.logger, Array.from(arguments));
         },
         handleCon: function(con, cmd) {
             con.on('report', (data) => {
@@ -85,8 +83,7 @@ function ReportServer(appserver, factory, configs, options) {
         initializeLogger: function() {
             this.logdir = this.options.logdir || path.join(__dirname, 'logs');
             this.logfile = path.join(this.logdir, 'ntreport.log');
-            this.stdout = new fs.createWriteStream(this.logfile, {flags: 'a'});
-            this.logger = new console.Console(this.stdout);
+            this.logger = new Logger(this.logfile);
         },
         init: function() {
             this.initializeLogger();

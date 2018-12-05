@@ -26,6 +26,7 @@ const io      = require('socket.io-client');
 const fs      = require('fs');
 const path    = require('path');
 const util    = require('../lib/util');
+const Logger  = require('../lib/logger');
 const Queue   = require('../lib/queue');
 
 module.exports = exports = MessagingServer;
@@ -47,9 +48,7 @@ function MessagingServer(appserver, factory, configs, options) {
         smsgw: null,
         smsgwConnected: false,
         log: function() {
-            const args = Array.from(arguments);
-            if (args.length) args[0] = util.formatDate(new Date(), '[yyyy-MM-dd HH:mm:ss.zzz]') + ' ' + args[0];
-            this.logger.log.apply(null, args);
+            this.logger.log.apply(this.logger, Array.from(arguments));
         },
         getPaths: function() {
             return [__dirname, path.dirname(appserver.config)];
@@ -383,8 +382,7 @@ function MessagingServer(appserver, factory, configs, options) {
         initializeLogger: function() {
             this.logdir = this.options.logdir || path.join(__dirname, 'logs');
             this.logfile = path.join(this.logdir, 'ntmsg.log');
-            this.stdout = new fs.createWriteStream(this.logfile, {flags: 'a'});
-            this.logger = new console.Console(this.stdout);
+            this.logger = new Logger(this.logfile);
         },
         init: function() {
             if (appserver.id == 'socket.io') {

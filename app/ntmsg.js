@@ -137,6 +137,12 @@ function MessagingServer(appserver, factory, configs, options) {
                         if (params.group) {
                             this.smsgw.emit('group', params.group);
                         }
+                        setTimeout(() => {
+                            if (this.smsgwq && this.smsgwq.queues.length) {
+                                console.log('Processing %d queue(s)...', this.smsgwq.queues.length);
+                                this.smsgwq.next();
+                            }
+                        }, 100);
                     }
                 });
                 if (this.configs['text-client'] != undefined) {
@@ -175,6 +181,9 @@ function MessagingServer(appserver, factory, configs, options) {
                     }
                     this.smsgwq.next();
                 }, () => {
+                    if (!this.smsgwConnected) {
+                        this.log('GW: Gateway not connected!');
+                    }
                     return this.smsgwConnected;
                 });
             }

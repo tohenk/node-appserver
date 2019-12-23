@@ -40,6 +40,7 @@ cmd.addBool('secure', 's', 'Use HTTPS server');
 cmd.addVar('ssl-key', '', 'Set SSL private key');
 cmd.addVar('ssl-cert', '', 'Set SSL public key');
 cmd.addVar('ssl-ca', '', 'Set SSL CA key');
+cmd.addVar('ssl-passphrase', '', 'Set SSL private key passphrase');
 
 function AppServer() {
     const server = {
@@ -83,6 +84,9 @@ function AppServer() {
                 };
                 if (cmd.get('ssl-ca')) {
                     c.ca = fs.readFileSync(cmd.get('ssl-ca'));
+                }
+                if (cmd.get('ssl-passphrase')) {
+                    c.passphrase = cmd.get('ssl-passphrase');
                 }
                 const https = require('https');
                 server = https.createServer(c);

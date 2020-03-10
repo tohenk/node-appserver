@@ -12,12 +12,6 @@ if [%1]==[-c] (
 	shift
 )
 
-if [%1]==[] (
-	set NODE_ENV=production
-) else (
-	set NODE_ENV=%1
-)
-
 if [%CFG%] == [] (
 	node app.js
 ) else (

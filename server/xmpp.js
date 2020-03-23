@@ -1,7 +1,7 @@
 /**
  * The MIT License (MIT)
  *
- * Copyright (c) 2016-2018 Toha <tohenk@yahoo.com>
+ * Copyright (c) 2016-2020 Toha <tohenk@yahoo.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
  * this software and associated documentation files (the "Software"), to deal in
@@ -62,7 +62,7 @@ function AppServer() {
             return instance;
         },
         run: function() {
-            var cnt = 0;
+            let cnt = 0;
             this.config = cmd.get('config') || process.env[global.ENV_CONFIG];
             if (!this.config) {
                 this.config = path.dirname(process.argv[1]) + path.sep + 'app.json';
@@ -72,7 +72,7 @@ function AppServer() {
                 console.log('Reading configuration %s', this.config);
                 const apps = JSON.parse(fs.readFileSync(this.config));
                 for (name in apps) {
-                    var options = apps[name];
+                    let options = apps[name];
                     if (!typeof options == 'object') {
                         throw new Error('Application configuration must be an object.');
                     }
@@ -155,16 +155,16 @@ function XmppConnection(options) {
         getPayload: function(value) {
             if (typeof value == 'object') {
                 if (value.children.length > 0) {
-                    var data = {};
-                    var idx = 0;
-                    for (var i = 0; i < value.children.length; i++) {
-                        var c = value.children[i];
-                        var v = this.getPayload(c);
+                    let data = {};
+                    let idx = 0;
+                    for (let i = 0; i < value.children.length; i++) {
+                        let c = value.children[i];
+                        let v = this.getPayload(c);
                         if (value.children.length == 1 && typeof c == 'string') {
                             data = v;
                             break;
                         }
-                        var key = c.name;
+                        let key = c.name;
                         if (key == 'VALUE') {
                             data[idx] = v;
                             idx++;
@@ -181,8 +181,8 @@ function XmppConnection(options) {
         buildPayload: function(node, value) {
             if (Array.isArray(value) || typeof value == 'object') {
                 for (key in value) {
-                    var num = key.toString().match(/^(\d+)$/) ? true : false;
-                    var c = node.c(num ? 'VALUE' : key);
+                    let num = key.toString().match(/^(\d+)$/) ? true : false;
+                    let c = node.c(num ? 'VALUE' : key);
                     this.buildPayload(c, value[key]);
                 }
             } else {
@@ -191,11 +191,11 @@ function XmppConnection(options) {
         },
         trigger: function(event, data) {
             debug('Trigger event: ' + event + ' with: ' + u.inspect(data));
-            for (var i = 0; i < this.events.length; i++) {
-                var ev = this.events[i];
+            for (let i = 0; i < this.events.length; i++) {
+                let ev = this.events[i];
                 if (event == ev.name) {
                     if (typeof ev.handler == 'function') {
-                        var trigger = true;
+                        let trigger = true;
                         if (data != undefined && data.uid != undefined && data.uid != this.uid) {
                             trigger = false;
                         }
@@ -217,17 +217,18 @@ function XmppConnection(options) {
                     debug('Message skipped');
                     return;
                 }
-                var bd = message.getChild('body');
+                let bd = message.getChild('body');
                 if (bd) {
-                    var event = bd.getText();
-                    var payload = message.getChild('payload');
+                    let event = bd.getText();
+                    let payload = message.getChild('payload');
+                    let data;
                     if (payload) {
                         data = this.getPayload(payload);
                     }
                     // handle push notification
                     if (event == 'push-notification' && data != undefined) {
-                        var event = data.name;
-                        var data = data.data;
+                        event = data.name;
+                        data = data.data;
                     }
                     if (data != undefined) {
                         this.trigger(event, data);
@@ -242,13 +243,13 @@ function XmppConnection(options) {
         onPresence: function(presence) {
             try {
                 debug('onPresence: ' + presence.toString());
-                var jid = presence.attrs.from;
+                let jid = presence.attrs.from;
                 if (jid) {
-                    var uid = jid.substr(jid.indexOf('/') + 1);
-                    var type = presence.attrs.type;
+                    let uid = jid.substr(jid.indexOf('/') + 1);
+                    let type = presence.attrs.type;
                     if (uid == this.uid) {
                         if (type == 'error') {
-                            var err = presence.getChild('error');
+                            let err = presence.getChild('error');
                             if (err) {
                                 console.error('Error: ' + err.getText());
                             }
@@ -293,7 +294,7 @@ function XmppConnection(options) {
                 }).c('body').t(event).root();
                 if (this._to) {
                     if (data == undefined) {
-                        var data = {}
+                        data = {}
                     }
                     data.uid = this._to;
                     this._to = null;

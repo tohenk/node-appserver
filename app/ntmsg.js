@@ -1,7 +1,7 @@
 /**
  * The MIT License (MIT)
  *
- * Copyright (c) 2016-2018 Toha <tohenk@yahoo.com>
+ * Copyright (c) 2016-2020 Toha <tohenk@yahoo.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
  * this software and associated documentation files (the "Software"), to deal in
@@ -42,9 +42,6 @@ function MessagingServer(appserver, factory, configs, options) {
         options: options || {},
         registerTimeout: 60,
         serverRoom: 'server',
-        textCmd: null,
-        emailCmd: null,
-        userNotifierCmd: null,
         smsgw: null,
         smsgwConnected: false,
         log: function() {
@@ -53,47 +50,12 @@ function MessagingServer(appserver, factory, configs, options) {
         getPaths: function() {
             return [__dirname, path.dirname(appserver.config)];
         },
-        getTextCmd: function(config) {
-            if (this.textCmd == null) {
-                this.textCmd = require('../lib/command')(config, {
-                    paths: this.getPaths(),
-                    args: ['ntucp:messaging', '--application=%APP%', '--env=%ENV%', '%CMD%', '%DATA%'],
-                    values: {
-                        'APP': 'frontend',
-                        'ENV': typeof v8debug == 'object' ? 'dev' : 'prod'
-                    }
-                });
-                console.log('Text client using %s...', this.textCmd.getId());
-            }
-            return this.textCmd;
-        },
-        getEmailCmd: function(config) {
-            if (this.emailCmd == null) {
-                this.emailCmd = require('../lib/command')(config, {
-                    paths: this.getPaths(),
-                    args: ['ntucp:deliver-email', '--application=%APP%', '--env=%ENV%', '%HASH%'],
-                    values: {
-                        'APP': 'frontend',
-                        'ENV': typeof v8debug == 'object' ? 'dev' : 'prod'
-                    }
-                });
-                console.log('Email delivery using %s...', this.emailCmd.getId());
-            }
-            return this.emailCmd;
-        },
-        getUserNotifierCmd: function(config) {
-            if (this.userNotifierCmd == null) {
-                this.userNotifierCmd = require('../lib/command')(config, {
-                    paths: this.getPaths(),
-                    args: ['ntucp:signin-notify', '--application=%APP%', '--env=%ENV%', '%ACTION%', '%DATA%'],
-                    values: {
-                        'APP': 'frontend',
-                        'ENV': typeof v8debug == 'object' ? 'dev' : 'prod'
-                    }
-                });
-                console.log('Signin notifier using %s...', this.userNotifierCmd.getId());
-            }
-            return this.userNotifierCmd;
+        getCmd: function(config, args, values) {
+            return require('../lib/command')(config, {
+                paths: this.getPaths(),
+                args: args,
+                values: values
+            });
         },
         execCmd: function(cmd, values) {
             return new Promise((resolve, reject) => {
@@ -102,16 +64,20 @@ function MessagingServer(appserver, factory, configs, options) {
                     console.log('Message from process: %s', JSON.stringify(data));
                 });
                 p.on('exit', (code) => {
-                    this.log('Result %s...', code);
+                    this.log('CLI: Result %s...', code);
                     resolve(code);
                 });
                 p.stdout.on('data', (line) => {
-                    var line = util.cleanBuffer(line);
-                    this.log(line);
+                    const lines = util.cleanBuffer(line).split('\n');
+                    for (let i = 0; i < lines.length; i++) {
+                        this.log('CLI: %s', lines[i]);
+                    }
                 });
                 p.stderr.on('data', (line) => {
-                    var line = util.cleanBuffer(line);
-                    this.log(line);
+                    const lines = util.cleanBuffer(line).split('\n');
+                    for (let i = 0; i < lines.length; i++) {
+                        this.log('CLI: %s', lines[i]);
+                    }
                 });
             });
         },
@@ -120,6 +86,7 @@ function MessagingServer(appserver, factory, configs, options) {
             if (null == this.smsgw) {
                 const params = this.configs['smsgw'];
                 const url = params.url;
+                console.log('SMS Gateway at %s', url);
                 this.smsgw = io(url);
                 this.smsgw.on('connect', () => {
                     console.log('Connected to SMS Gateway at %s', url);
@@ -146,14 +113,15 @@ function MessagingServer(appserver, factory, configs, options) {
                     }
                 });
                 if (this.configs['text-client'] != undefined) {
-                    this.smscmd = this.getTextCmd(this.configs['text-client']);
+                    this.smscmd = this.getCmd(this.configs['text-client'], ['%CMD%', '%DATA%']);
+                    console.log('Text client using %s', this.smscmd.getId());
                     this.smsgw.on('message', (hash, number, message, time) => {
-                        this.log('%s: New message from %s', hash, number);
+                        this.log('SMS: %s: New message from %s', hash, number);
                         this.smsQueue('MESG', JSON.stringify({date: time, number: number, message: message, hash: hash}));
                     });
                     this.smsgw.on('status-report', (data) => {
                         if (data.hash) {
-                            this.log('%s: Delivery status for %s is %s', data.hash, data.address, data.code);
+                            this.log('SMS: %s: Delivery status for %s is %s', data.hash, data.address, data.code);
                             this.smsQueue('DELV', JSON.stringify({hash: data.hash, number: data.address, code: data.code, sent: data.sent, received: data.received}));
                         }
                     });
@@ -164,7 +132,7 @@ function MessagingServer(appserver, factory, configs, options) {
                     if (savedQueues.length) {
                         Array.prototype.push.apply(queues, savedQueues);
                         fs.writeFileSync(this.gwQueueFilename, JSON.stringify([]));
-                        this.log('GW: %s queue(s) loaded from %s...', savedQueues.length, this.gwQueueFilename);
+                        this.log('GWY: %s queue(s) loaded from %s...', savedQueues.length, this.gwQueueFilename);
                     }
                 }
                 this.smsgwq = new Queue(queues, (data) => {
@@ -182,7 +150,7 @@ function MessagingServer(appserver, factory, configs, options) {
                     this.smsgwq.next();
                 }, () => {
                     if (!this.smsgwConnected) {
-                        this.log('GW: Gateway not connected!');
+                        this.log('GWY: Gateway not connected!');
                     }
                     return this.smsgwConnected;
                 });
@@ -207,32 +175,48 @@ function MessagingServer(appserver, factory, configs, options) {
         },
         deliverEmail: function(hash, attr) {
             if (this.configs['email-sender'] != undefined) {
-                const cmd = this.getEmailCmd(this.configs['email-sender']);
-                const params = {
-                    HASH: hash
-                };
+                if (!this.emailcmd) {
+                    this.emailcmd = this.getCmd(this.configs['email-sender'], ['%HASH%']);
+                }
+            }
+            if (this.emailcmd) {
+                const params = {HASH: hash};
                 if (attr != undefined) {
                     params.ATTR = attr;
                 }
-                return this.execCmd(cmd, params);
+                return this.execCmd(this.emailcmd, params);
             } else {
-                Promise.resolve();
+                return Promise.resolve();
+            }
+        },
+        deliverData: function(id, params) {
+            const cmdid = id + 'cmd';
+            if (this.configs[id] != undefined) {
+                if (!this[cmdid]) {
+                    this[cmdid] = this.getCmd(this.configs[id], ['%DATA%']);
+                }
+            }
+            if (this[cmdid]) {
+                return this.execCmd(this[cmdid], {DATA: JSON.stringify(params)});
+            } else {
+                return Promise.resolve();
             }
         },
         notifySignin: function(action, data) {
             if (this.configs['user-notifier'] != undefined) {
-                const cmd = this.getUserNotifierCmd(this.configs['user-notifier']);
-                return this.execCmd(cmd, {
-                    ACTION: action,
-                    DATA: JSON.stringify(data)
-                });
+                if (!this.signincmd) {
+                    this.signincmd = this.getCmd(this.configs['user-notifier'], ['%ACTION%', '%DATA%']);
+                }
+            }
+            if (this.signincmd) {
+                return this.execCmd(this.signincmd, {ACTION: action, DATA: JSON.stringify(data)});
             } else {
-                Promise.resolve();
+                return Promise.resolve();
             }
         },
         getUsers: function() {
-            var users = [];
-            var uids = [];
+            const users = [];
+            const uids = [];
             for (id in Connections) {
                 if (Connections[id].type == this.CON_CLIENT) {
                     if (uids.indexOf(Connections[id].uid) < 0) {
@@ -252,17 +236,17 @@ function MessagingServer(appserver, factory, configs, options) {
         },
         removeCon: function(con) {
             if (Connections[con.id]) {
-                var data = Connections[con.id];
+                const data = Connections[con.id];
                 switch (data.type) {
                     case this.CON_SERVER:
                         con.leave(this.serverRoom);
-                        this.log('%s: Server disconnected...', con.id);
+                        this.log('SVR: %s: Disconnected...', con.id);
                         break;
                     case this.CON_CLIENT:
                         con.leave(data.uid);
                         // notify other users someone is offline
                         this.con.emit('user-offline', data.uid);
-                        this.log('%s: User %s disconnected...', con.id, data.uid);
+                        this.log('USR: %s: %s disconnected...', con.id, data.uid);
                         break;
                 }
                 delete Connections[con.id];
@@ -270,15 +254,15 @@ function MessagingServer(appserver, factory, configs, options) {
         },
         handleServerCon: function(con) {
             con.on('whos-online', () => {
-                this.log('%s: [Server] Query whos-online...', con.id);
-                var users = this.getUsers();
+                this.log('SVR: %s: Query whos-online...', con.id);
+                const users = this.getUsers();
                 con.emit('whos-online', users);
-                for (var i = 0; i < users.length; i++) {
-                    this.log('%s: [Server] User: %s, time: %d', con.id, users[i].uid, users[i].time);
+                for (let i = 0; i < users.length; i++) {
+                    this.log('SVR: %s: User: %s, time: %d', con.id, users[i].uid, users[i].time);
                 }
             });
             con.on('notification', (data) => {
-                this.log('%s: [Server] New notification for %s...', con.id, data.uid);
+                this.log('SVR: %s: New notification for %s...', con.id, data.uid);
                 const notif = {
                     message: data.message
                 }
@@ -287,21 +271,21 @@ function MessagingServer(appserver, factory, configs, options) {
                 this.con.to(data.uid).emit('notification', notif);
             });
             con.on('push-notification', (data) => {
-                this.log('%s: [Server] Push notification: %s...', con.id, JSON.stringify(data));
+                this.log('SVR: %s: Push notification: %s...', con.id, JSON.stringify(data));
                 if (data.name != undefined) {
                     this.con.emit(data.name, data.data != undefined ? data.data : {});
                 }
             });
             con.on('message', (data) => {
-                this.log('%s: [Server] New message for %s...', con.id, data.uid);
+                this.log('SVR: %s: New message for %s...', con.id, data.uid);
                 this.con.to(data.uid).emit('message');
             });
             con.on('text-message', (data) => {
-                this.log('%s: [Server] Send text to %s "%s"...', con.id, data.number, data.message);
+                this.log('SVR: %s: Send text to %s "%s"...', con.id, data.number, data.message);
                 this.smsgwq.requeue([data]);
             });
             con.on('deliver-email', (data) => {
-                this.log('%s: [Server] Deliver email %s...', con.id, data.hash);
+                this.log('SVR: %s: Deliver email %s...', con.id, data.hash);
                 if (data.attr) {
                     this.deliverEmail(data.hash, data.attr);
                 } else {
@@ -309,12 +293,18 @@ function MessagingServer(appserver, factory, configs, options) {
                 }
             });
             con.on('user-signin', (data) => {
-                this.log('%s: [Server] User signin %s...', con.id, data.username);
+                this.log('SVR: %s: User signin %s...', con.id, data.username);
                 this.notifySignin('SIGNIN', data);
             });
             con.on('user-signout', (data) => {
-                this.log('%s: [Server] User signout %s...', con.id, data.username);
+                this.log('SVR: %s: User signout %s...', con.id, data.username);
                 this.notifySignin('SIGNOUT', data);
+            });
+            con.on('data', (data) => {
+                this.log('SVR: %s: Receiving data %s...', con.id, JSON.stringify(data));
+                if (data.id && data.params) {
+                    this.deliverData(data.id, data.params);
+                }
             });
         },
         handleClientCon: function(con) {
@@ -335,7 +325,7 @@ function MessagingServer(appserver, factory, configs, options) {
                 con.disconnect(true);
             }, this.registerTimeout * 1000);
             con.on('register', (data) => {
-                var dismiss = true;
+                let dismiss = true;
                 const info = {};
                 // is it a server connection?
                 if (data.sid) {
@@ -345,9 +335,9 @@ function MessagingServer(appserver, factory, configs, options) {
                         info.type = this.CON_SERVER;
                         con.join(this.serverRoom);
                         this.handleServerCon(con);
-                        this.log('%s: Server connected...', con.id);
+                        this.log('SVR: %s: Connected...', con.id);
                     } else {
-                        this.log('%s: Server didn\'t send correct key...', con.id);
+                        this.log('SVR: %s: Didn\'t send correct key...', con.id);
                     }
                 } else if (data.uid) {
                     dismiss = false;
@@ -357,13 +347,13 @@ function MessagingServer(appserver, factory, configs, options) {
                     this.handleClientCon(con);
                     // notify other users someone is online
                     this.con.emit('user-online', data.uid);
-                    this.log('%s: User %s connected...', con.id, data.uid);
+                    this.log('USR: %s: %s connected...', con.id, data.uid);
                 } else {
-                    this.log('%s: Invalid registration...', con.id, data.uid);
+                    this.log('ERR: %s: Invalid registration...', con.id, data.uid);
                 }
                 if (dismiss) {
                     con.disconnect(true);
-                    this.log('%s: Forced disconnect...', con.id);
+                    this.log('ERR: %s: Forced disconnect...', con.id);
                 } else {
                     this.addCon(con, info);
                     clearTimeout(t);
@@ -385,7 +375,7 @@ function MessagingServer(appserver, factory, configs, options) {
         doClose: function(server) {
             if (this.smsgwq && this.smsgwq.queues.length) {
                 fs.writeFileSync(this.gwQueueFilename, JSON.stringify(this.smsgwq.queues));
-                this.log('Gateway queue saved to %s...', this.gwQueueFilename);
+                this.log('GWY: Queue saved to %s...', this.gwQueueFilename);
             }
         },
         initializeLogger: function() {

@@ -1,7 +1,7 @@
 /**
  * The MIT License (MIT)
  *
- * Copyright (c) 2016-2018 Toha <tohenk@yahoo.com>
+ * Copyright (c) 2016-2020 Toha <tohenk@yahoo.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
  * this software and associated documentation files (the "Software"), to deal in
@@ -46,10 +46,10 @@ function AppServer() {
     const server = {
         id: 'socket.io',
         create: function(options) {
-            var server;
-            var options = options || {};
-            var port = options.port || cmd.get('port');
-            var secure = options.secure || cmd.get('secure');
+            options = options || {};
+            let server;
+            let port = options.port || cmd.get('port');
+            let secure = options.secure || cmd.get('secure');
             // check instance in server pool
             if (Servers[port]) {
                 if (Servers[port]['secure'] != secure) {
@@ -59,7 +59,7 @@ function AppServer() {
             }
             // validate secure server
             if (secure) {
-                var err = null;
+                let err = null;
                 if (!cmd.get('ssl-key') || !util.fileExist(cmd.get('ssl-key'))) {
                     err = 'No SSL private key supplied or file not found.';
                 } else if (!cmd.get('ssl-cert') || !util.fileExist(cmd.get('ssl-cert'))) {
@@ -106,7 +106,7 @@ function AppServer() {
             return server;
         },
         getAddress: function(server) {
-            var addr = server.address();
+            const addr = server.address();
             return addr.family == 'IPv4' ? addr.address : '[' + addr.address + ']' + ':' + addr.port;
         },
         createApp: function(server, name, options) {
@@ -146,7 +146,7 @@ function AppServer() {
             if (!server) {
                 throw new Error('Socket IO need a server to be assigned.');
             }
-            var io = null;
+            let io = null;
             if (Servers[port]) {
                 io = Servers[port]['io'];
             }
@@ -159,9 +159,9 @@ function AppServer() {
             return io;
         },
         notifyAppClose: function() {
-            for (var port in Servers) {
+            for (let port in Servers) {
                 console.log('Notify application exit for server on port %s', port);
-                for (var i = 0; i < Servers[port].apps.length; i++) {
+                for (let i = 0; i < Servers[port].apps.length; i++) {
                     console.log('Notify application %s', Servers[port].apps[i].name);
                     if (typeof Servers[port].apps[i].doClose == 'function') {
                         Servers[port].apps[i].doClose(Servers[port].server);
@@ -170,7 +170,7 @@ function AppServer() {
             }
         },
         run: function() {
-            var cnt = 0;
+            let cnt = 0;
             this.config = cmd.get('config') || process.env[global.ENV_CONFIG];
             if (!this.config) {
                 this.config = path.dirname(process.argv[1]) + path.sep + 'app.json';
@@ -180,7 +180,7 @@ function AppServer() {
                 console.log('Reading configuration %s', this.config);
                 const apps = JSON.parse(fs.readFileSync(this.config));
                 for (name in apps) {
-                    var options = apps[name];
+                    let options = apps[name];
                     if (!typeof options == 'object') {
                         throw new Error('Application configuration must be an object.');
                     }

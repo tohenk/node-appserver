@@ -1,7 +1,7 @@
 /**
  * The MIT License (MIT)
  *
- * Copyright (c) 2014-2018 Toha <tohenk@yahoo.com>
+ * Copyright (c) 2014-2020 Toha <tohenk@yahoo.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
  * this software and associated documentation files (the "Software"), to deal in
@@ -43,16 +43,16 @@ function ReportServer(appserver, factory, configs, options) {
                     cmd = this.handlers[data.namespace];
                 }
                 if (cmd == undefined) return;
-                const p = cmd.exec({
-                    REPORTID: data.hash
-                });
+                const p = cmd.exec({REPORTID: data.hash});
                 p.on('exit', (code) => {
                     this.log('%s: %s status is %s...', con.id, data.hash, code);
                     con.emit('done', { hash: data.hash, code: code });
                 });
                 p.stdout.on('data', (line) => {
-                    var line = util.cleanBuffer(line);
-                    this.log('%s: %s', con.id, line);
+                    const lines = util.cleanBuffer(line).split('\n');
+                    for (let i = 0; i < lines.length; i++) {
+                        this.log('%s: %s', con.id, lines[i]);
+                    }
                     // monitor progress
                     const re = /Progress\:\s+(\d+)\%/g;
                     const matches = re.exec(line);
@@ -62,21 +62,16 @@ function ReportServer(appserver, factory, configs, options) {
                     }
                 });
                 p.stderr.on('data', (line) => {
-                    var line = util.cleanBuffer(line);
-                    this.log('%s: %s', con.id, line);
+                    const lines = util.cleanBuffer(line).split('\n');
+                    for (let i = 0; i < lines.length; i++) {
+                        this.log('%s: %s', con.id, lines[i]);
+                    }
                 });
             });
         },
         createHandler: function(name, options) {
-            var configPath = path.dirname(appserver.config);
-            var cmd = require('../lib/command')(options, {
-                paths: [__dirname, configPath],
-                args: ['ntreport:generate', '--application=%APP%', '--env=%ENV%', '%REPORTID%'],
-                values: {
-                    'APP': 'frontend',
-                    'ENV': typeof v8debug == 'object' ? 'dev' : 'prod'
-                }
-            });
+            const configPath = path.dirname(appserver.config);
+            const cmd = require('../lib/command')(options, {paths: [__dirname, configPath], args: ['%REPORTID%']});
             this.handlers[name] = cmd;
             return cmd;
         },
@@ -87,12 +82,12 @@ function ReportServer(appserver, factory, configs, options) {
         },
         init: function() {
             this.initializeLogger();
-            for (var ns in this.configs) {
-                var cmd = this.createHandler(ns, this.configs[ns]);
+            for (let ns in this.configs) {
+                let cmd = this.createHandler(ns, this.configs[ns]);
                 console.log('Serving %s...', ns);
                 console.log('Using command %s...', cmd.getId());
             }
-            var con = factory();
+            const con = factory();
             if (appserver.id == 'socket.io') {
                 con.on('connection', (client) => {
                     this.handleCon(client);

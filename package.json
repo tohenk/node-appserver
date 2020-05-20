@@ -9,6 +9,6 @@
         "node-xmpp-client": "^3.2.0",
         "socket.io": "^2.3.0",
         "utf-8-validate": "^5.0.2",
-        "ws": "^7.2.3"
+        "ws": "^7.3.0"
     }
 }

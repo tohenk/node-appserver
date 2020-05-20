@@ -1,7 +1,7 @@
 /**
  * The MIT License (MIT)
  *
- * Copyright (c) 2014-2018 Toha <tohenk@yahoo.com>
+ * Copyright (c) 2014-2020 Toha <tohenk@yahoo.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
  * this software and associated documentation files (the "Software"), to deal in
@@ -34,16 +34,16 @@ const
     
 // === command line setup ===
 
-cmd.addVar('type', 't', 'Server type: socket or xmpp', 'server-type', 'socket');
 cmd.addBool('help', 'h', 'Show program usage').setAccessible(false);
+cmd.addVar('type', 't', 'Server type: socket or xmpp', 'server-type', 'socket');
 cmd.addVar('config', 'c', 'Read app configuration from file', 'config-file');
 cmd.addVar('logdir', 'l', 'Set the log file location', 'directory');
 
 // === include app handler ===
 
 const
-    socketapp   = require('./server/socket')(),
-    xmppapp     = require('./server/xmpp')();
+    socketsvr   = require('./server/socket'),
+    xmppsvr     = require('./server/xmpp');
 
 if (!cmd.parse() || (cmd.get('help') && usage())) {
     process.exit();
@@ -52,9 +52,9 @@ if (!cmd.parse() || (cmd.get('help') && usage())) {
 // === run the app ===
 
 if ('socket' == cmd.get('type')) {
-    socketapp.run();
+    new socketsvr().run();
 } else {
-    xmppapp.run();
+    new xmppsvr().run();
 }
 
 function usage() {

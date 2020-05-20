@@ -26,79 +26,88 @@ const path    = require('path');
 const util    = require('../lib/util');
 const Logger  = require('../lib/logger');
 
-module.exports = exports = ReportServer;
+class ReportServer {
 
-function ReportServer(appserver, factory, configs, options) {
-    const app = {
-        configs: configs || {},
-        options: options || {},
-        handlers: {},
-        log: function() {
-            this.logger.log.apply(this.logger, Array.from(arguments));
-        },
-        handleCon: function(con, cmd) {
-            con.on('report', (data) => {
-                this.log('%s: Generating report %s...', con.id, data.hash);
-                if (cmd == undefined && data.namespace) {
-                    cmd = this.handlers[data.namespace];
-                }
-                if (cmd == undefined) return;
-                const p = cmd.exec({REPORTID: data.hash});
-                p.on('exit', (code) => {
-                    this.log('%s: %s status is %s...', con.id, data.hash, code);
-                    con.emit('done', { hash: data.hash, code: code });
-                });
-                p.stdout.on('data', (line) => {
-                    const lines = util.cleanBuffer(line).split('\n');
-                    for (let i = 0; i < lines.length; i++) {
-                        this.log('%s: %s', con.id, lines[i]);
-                    }
-                    // monitor progress
-                    const re = /Progress\:\s+(\d+)\%/g;
-                    const matches = re.exec(line);
-                    if (matches) {
-                        const progress = parseInt(matches[1]);
-                        con.emit('progress', { hash: data.hash, progress: progress });
-                    }
-                });
-                p.stderr.on('data', (line) => {
-                    const lines = util.cleanBuffer(line).split('\n');
-                    for (let i = 0; i < lines.length; i++) {
-                        this.log('%s: %s', con.id, lines[i]);
-                    }
-                });
+    configs = null
+    options = null
+    handlers = {}
+
+    constructor(appserver, factory, configs, options) {
+        this.appserver = appserver;
+        this.factory = factory;
+        this.configs = configs || {};
+        this.options = options || {};
+        this.init();
+    }
+
+    init() {
+        this.initializeLogger();
+        for (let ns in this.configs) {
+            let cmd = this.createHandler(ns, this.configs[ns]);
+            console.log('Serving %s...', ns);
+            console.log('Using command %s...', cmd.getId());
+        }
+        const con = this.factory();
+        if (this.appserver.id == 'socket.io') {
+            con.on('connection', (client) => {
+                this.handleCon(client);
             });
-        },
-        createHandler: function(name, options) {
-            const configPath = path.dirname(appserver.config);
-            const cmd = require('../lib/command')(options, {paths: [__dirname, configPath], args: ['%REPORTID%']});
-            this.handlers[name] = cmd;
-            return cmd;
-        },
-        initializeLogger: function() {
-            this.logdir = this.options.logdir || path.join(__dirname, 'logs');
-            this.logfile = path.join(this.logdir, 'ntreport.log');
-            this.logger = new Logger(this.logfile);
-        },
-        init: function() {
-            this.initializeLogger();
-            for (let ns in this.configs) {
-                let cmd = this.createHandler(ns, this.configs[ns]);
-                console.log('Serving %s...', ns);
-                console.log('Using command %s...', cmd.getId());
-            }
-            const con = factory();
-            if (appserver.id == 'socket.io') {
-                con.on('connection', (client) => {
-                    this.handleCon(client);
-                });
-            } else {
-                this.handleCon(con);
-            }
-            return this;
+        } else {
+            this.handleCon(con);
         }
     }
-    return app.init();
+
+    initializeLogger() {
+        this.logdir = this.options.logdir || path.join(__dirname, 'logs');
+        this.logfile = path.join(this.logdir, 'ntreport.log');
+        this.logger = new Logger(this.logfile);
+    }
+
+    log() {
+        this.logger.log.apply(this.logger, Array.from(arguments));
+    }
+
+    handleCon(con, cmd) {
+        con.on('report', (data) => {
+            this.log('%s: Generating report %s...', con.id, data.hash);
+            if (cmd == undefined && data.namespace) {
+                cmd = this.handlers[data.namespace];
+            }
+            if (cmd == undefined) return;
+            const p = cmd.exec({REPORTID: data.hash});
+            p.on('exit', (code) => {
+                this.log('%s: %s status is %s...', con.id, data.hash, code);
+                con.emit('done', { hash: data.hash, code: code });
+            });
+            p.stdout.on('data', (line) => {
+                const lines = util.cleanBuffer(line).split('\n');
+                for (let i = 0; i < lines.length; i++) {
+                    this.log('%s: %s', con.id, lines[i]);
+                }
+                // monitor progress
+                const re = /Progress\:\s+(\d+)\%/g;
+                const matches = re.exec(line);
+                if (matches) {
+                    const progress = parseInt(matches[1]);
+                    con.emit('progress', { hash: data.hash, progress: progress });
+                }
+            });
+            p.stderr.on('data', (line) => {
+                const lines = util.cleanBuffer(line).split('\n');
+                for (let i = 0; i < lines.length; i++) {
+                    this.log('%s: %s', con.id, lines[i]);
+                }
+            });
+        });
+    }
+
+    createHandler(name, options) {
+        const configPath = path.dirname(this.appserver.config);
+        const cmd = require('../lib/command')(options, {paths: [__dirname, configPath], args: ['%REPORTID%']});
+        this.handlers[name] = cmd;
+        return cmd;
+    }
+
 }
 
-// EOF
+module.exports = ReportServer;

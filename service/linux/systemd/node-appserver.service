@@ -5,10 +5,12 @@ Description=Node App Server
 WorkingDirectory=/home/nodeapp/node-appserver
 ExecStart=/usr/bin/node app.js --config=node-appserver.json
 # Using SSL
-#Environment=CERT_DIR=/home/nodeapp/node-appserver/cert
+#Environment="CERT_DIR=/home/nodeapp/node-appserver/cert"
 #ExecStart=/usr/bin/node app.js \
-#    --ssl-key=$CERT_DIR/cert.key --ssl-cert=$CERT_DIR/cert.crt --ssl-ca=$CERT_DIR/cert.ca-bundle \
-#    --config=node-appserver.json
+#  --ssl-key=${CERT_DIR}/cert.key \
+#  --ssl-cert=${CERT_DIR}/cert.crt \
+#  --ssl-ca=${CERT_DIR}/cert.ca-bundle \
+#  --config=node-appserver.json
 # Using XMPP
 #ExecStart=/usr/bin/node app.js --type=xmpp --config=node-appserver-xmpp.json
 User=nodejs

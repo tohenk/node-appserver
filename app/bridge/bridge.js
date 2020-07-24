@@ -58,6 +58,9 @@ class MessagingBridge {
     handleClient(con) {
     }
 
+    disconnect(con) {
+    }
+
 }
 
 module.exports = MessagingBridge;

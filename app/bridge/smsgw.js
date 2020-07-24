@@ -50,7 +50,7 @@ class SMSGateway extends Bridge {
     }
 
     setupSMSGateway(config) {
-        if (config) {
+        if (config && config.url) {
             console.log('SMS Gateway at %s', config.url);
             this.gw = io(config.url);
             this.gw
@@ -158,9 +158,6 @@ class SMSGateway extends Bridge {
                 this.queue.requeue([data]);
             }
         });
-    }
-
-    handleClient(con) {
     }
 
 }

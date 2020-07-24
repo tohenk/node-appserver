@@ -332,6 +332,9 @@ class MessagingServer {
         });
         con.on('disconnect', () => {
             this.removeCon(con);
+            this.bridges.forEach((bridge) => {
+                bridge.disconnect(con);
+            });
         });
     }
 

@@ -28,22 +28,22 @@ const Logger  = require('../lib/logger');
 
 class ReportServer {
 
-    configs = null
+    config = null
     options = null
     handlers = {}
 
-    constructor(appserver, factory, configs, options) {
+    constructor(appserver, factory, config, options) {
         this.appserver = appserver;
         this.factory = factory;
-        this.configs = configs || {};
+        this.config = config || {};
         this.options = options || {};
         this.init();
     }
 
     init() {
         this.initializeLogger();
-        for (let ns in this.configs) {
-            let cmd = this.createHandler(ns, this.configs[ns]);
+        for (let ns in this.config) {
+            let cmd = this.createHandler(ns, this.config[ns]);
             console.log('Serving %s...', ns);
             console.log('Using command %s...', cmd.getId());
         }

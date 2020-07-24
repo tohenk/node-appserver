@@ -22,12 +22,11 @@
  * SOFTWARE.
  */
 
-const io      = require('socket.io-client');
 const fs      = require('fs');
 const path    = require('path');
 const util    = require('../lib/util');
 const Logger  = require('../lib/logger');
-const Queue   = require('../lib/queue');
+const Bridge  = require('./bridge/bridge');
 
 const Connections = {};
 
@@ -38,48 +37,58 @@ class MessagingServer {
 
     appserver = null
     con = null
-    configs = null
+    config = null
     options = null
     registerTimeout = 60
     serverRoom = 'server'
-    smsgw = null
-    smsgwConnected = false
+    bridges = []
 
-    constructor(appserver, factory, configs, options) {
+    constructor(appserver, factory, config, options) {
         this.appserver = appserver;
         this.factory = factory;
-        this.configs = configs || {};
+        this.config = config || {};
         this.options = options || {};
         this.init();
     }
 
     init() {
         if (this.appserver.id == 'socket.io') {
-            if (this.configs.key == undefined) {
+            if (this.config.key == undefined) {
                 throw new Error('Server key not defined!');
             }
-            this.serverKey = this.configs.key;
+            this.serverKey = this.config.key;
         }
-        if (this.configs.timeout != undefined) {
-            this.registerTimeout = this.configs.timeout;
+        if (this.config.timeout != undefined) {
+            this.registerTimeout = this.config.timeout;
         }
-        this.initializeLogger();
-        const ns = this.configs.namespace || null;
         this.queueDir = path.join(path.dirname(this.appserver.config), 'queue');
         if (!fs.existsSync(this.queueDir)) {
             fs.mkdirSync(this.queueDir);
         }
-        this.textQueueFilename = path.join(this.queueDir, 'text.json');
-        this.gwQueueFilename = path.join(this.queueDir, 'messages.json');
+        this.initializeLogger();
+        this.createBridges();
+        const ns = this.config.namespace || null;
         this.con = this.factory(ns);
         this.listen(this.con);
-        this.connectSMSGateway();
     }
 
     initializeLogger() {
         this.logdir = this.options.logdir || path.join(__dirname, 'logs');
         this.logfile = path.join(this.logdir, 'ntmsg.log');
         this.logger = new Logger(this.logfile);
+    }
+
+    createBridges() {
+        if (this.config.bridges) {
+            this.config.bridges.forEach((bridge) => {
+                const BridgeClass = require(bridge);
+                const br = new BridgeClass(this);
+                if (br instanceof Bridge) {
+                    br.initialize(this.config);
+                    this.bridges.push(br);
+                }
+            });
+        }
     }
 
     log() {
@@ -123,104 +132,10 @@ class MessagingServer {
         });
     }
 
-    connectSMSGateway() {
-        if (this.configs['smsgw'] == undefined) return;
-        if (null == this.smsgw) {
-            const params = this.configs['smsgw'];
-            const url = params.url;
-            console.log('SMS Gateway at %s', url);
-            this.smsgw = io(url);
-            this.smsgw.on('connect', () => {
-                console.log('Connected to SMS Gateway at %s', url);
-                this.smsgwConnected = true;
-                this.smsgw.emit('auth', params.secret);
-            });
-            this.smsgw.on('disconnect', () => {
-                console.log('Disconnected from SMS Gateway at %s', url);
-                this.smsgwConnected = false;
-            });
-            this.smsgw.on('auth', (success) => {
-                if (!success) {
-                    console.log('Authentication with SMS Gateway failed!');
-                } else {
-                    if (params.group) {
-                        this.smsgw.emit('group', params.group);
-                    }
-                    setTimeout(() => {
-                        if (this.smsgwq && this.smsgwq.queues.length) {
-                            console.log('Processing %d queue(s)...', this.smsgwq.queues.length);
-                            this.smsgwq.next();
-                        }
-                    }, 100);
-                }
-            });
-            if (this.configs['text-client'] != undefined) {
-                this.smscmd = this.getCmd(this.configs['text-client'], ['%CMD%', '%DATA%']);
-                console.log('Text client using %s', this.smscmd.getId());
-                this.smsgw.on('message', (hash, number, message, time) => {
-                    this.log('SMS: %s: New message from %s', hash, number);
-                    this.smsQueue('MESG', JSON.stringify({date: time, number: number, message: message, hash: hash}));
-                });
-                this.smsgw.on('status-report', (data) => {
-                    if (data.hash) {
-                        this.log('SMS: %s: Delivery status for %s is %s', data.hash, data.address, data.code);
-                        this.smsQueue('DELV', JSON.stringify({hash: data.hash, number: data.address, code: data.code, sent: data.sent, received: data.received}));
-                    }
-                });
-            }
-            const queues = [];
-            if (fs.existsSync(this.gwQueueFilename)) {
-                const savedQueues = JSON.parse(fs.readFileSync(this.gwQueueFilename));
-                if (savedQueues.length) {
-                    Array.prototype.push.apply(queues, savedQueues);
-                    fs.writeFileSync(this.gwQueueFilename, JSON.stringify([]));
-                    this.log('GWY: %s queue(s) loaded from %s...', savedQueues.length, this.gwQueueFilename);
-                }
-            }
-            this.smsgwq = new Queue(queues, (data) => {
-                const msg = {
-                    hash: data.hash,
-                    address: data.number,
-                    data: data.message
-                }
-                if (data.attr) {
-                    // resend or checking existing message
-                    this.smsgw.emit('message-retry', msg);
-                } else {
-                    this.smsgw.emit('message', msg);
-                }
-                this.smsgwq.next();
-            }, () => {
-                if (!this.smsgwConnected) {
-                    this.log('GWY: Gateway not connected!');
-                }
-                return this.smsgwConnected;
-            });
-        }
-    }
-
-    smsQueue(cmd, data) {
-        const queue = {
-            CMD: cmd,
-            DATA: data
-        }
-        if (!this.smsq) {
-            this.smsq = new Queue([queue], (q) => {
-                this.execCmd(this.smscmd, q)
-                    .then(() => {
-                        this.smsq.next();
-                    })
-                ;
-            });
-        } else {
-            this.smsq.requeue([queue]);
-        }
-    }
-
     deliverEmail(hash, attr) {
-        if (this.configs['email-sender'] != undefined) {
+        if (this.config['email-sender'] != undefined) {
             if (!this.emailcmd) {
-                this.emailcmd = this.getCmd(this.configs['email-sender'], ['%HASH%']);
+                this.emailcmd = this.getCmd(this.config['email-sender'], ['%HASH%']);
             }
         }
         if (this.emailcmd) {
@@ -236,9 +151,9 @@ class MessagingServer {
 
     deliverData(id, params) {
         const cmdid = id + 'cmd';
-        if (this.configs[id] != undefined) {
+        if (this.config[id] != undefined) {
             if (!this[cmdid]) {
-                this[cmdid] = this.getCmd(this.configs[id], ['%DATA%']);
+                this[cmdid] = this.getCmd(this.config[id], ['%DATA%']);
             }
         }
         if (this[cmdid]) {
@@ -249,9 +164,9 @@ class MessagingServer {
     }
 
     notifySignin(action, data) {
-        if (this.configs['user-notifier'] != undefined) {
+        if (this.config['user-notifier'] != undefined) {
             if (!this.signincmd) {
-                this.signincmd = this.getCmd(this.configs['user-notifier'], ['%ACTION%', '%DATA%']);
+                this.signincmd = this.getCmd(this.config['user-notifier'], ['%ACTION%', '%DATA%']);
             }
         }
         if (this.signincmd) {
@@ -330,10 +245,6 @@ class MessagingServer {
             this.log('SVR: %s: New message for %s...', con.id, data.uid);
             this.con.to(data.uid).emit('message');
         });
-        con.on('text-message', (data) => {
-            this.log('SVR: %s: Send text to %s "%s"...', con.id, data.number, data.message);
-            this.smsgwq.requeue([data]);
-        });
         con.on('deliver-email', (data) => {
             this.log('SVR: %s: Deliver email %s...', con.id, data.hash);
             if (data.attr) {
@@ -356,6 +267,10 @@ class MessagingServer {
                 this.deliverData(data.id, data.params);
             }
         });
+        // handle bridges server connection
+        this.bridges.forEach((bridge) => {
+            bridge.handleServer(con);
+        });
     }
 
     handleClientCon(con) {
@@ -369,11 +284,15 @@ class MessagingServer {
                 this.con.to(data.uid).emit('message-sent', data);
             }
         });
+        // handle bridges client connection
+        this.bridges.forEach((bridge) => {
+            bridge.handleClient(con);
+        });
     }
 
     setupCon(con) {
         // disconnect if not registered within timeout
-        const t = setTimeout(function() {
+        const t = setTimeout(() => {
             con.disconnect(true);
         }, this.registerTimeout * 1000);
         con.on('register', (data) => {
@@ -427,10 +346,9 @@ class MessagingServer {
     }
 
     doClose(server) {
-        if (this.smsgwq && this.smsgwq.queues.length) {
-            fs.writeFileSync(this.gwQueueFilename, JSON.stringify(this.smsgwq.queues));
-            this.log('GWY: Queue saved to %s...', this.gwQueueFilename);
-        }
+        this.bridges.forEach((bridge) => {
+            bridge.finalize();
+        });
     }
 
 }

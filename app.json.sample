@@ -1,34 +1,45 @@
 {
-    "myapp": {
-        "title": "MyApp that is doing something (Unsecure)",
-        "module": "./app/myapp",
+    "messaging": {
+        "title": "Messaging Connector (Unsecure)",
+        "module": "./app/ntmsg",
         "enabled": true,
         "secure": false,
         "port": 8080,
         "path": null,
         "logdir": "logs",
         "params": {
-            "my-cli": "/path/to/cli",
-            "my-other-cli": {
-                "cli": "/path/to/other/cli",
-                "bin": "php",
-                "args": [
-                    "-f",
-                    "%CLI%",
-                    "--",
-                    "--key1=value1",
-                    "--key2=%VALUE%",
-                    "%DATA%"
-                ]
+            "bridges": [
+                "./bridge/smsgw"
+            ],
+            "smsgw": {
+                "url": "http://example.com/gw",
+                "secret": "mysecret",
+                "group": "mygroup"
             },
-            "post-to-my-website": {
-                "url": "http://www.example.com/api",
+            "text-client": {
+                "url": "http://example.com/text-api",
                 "method": "POST",
                 "data": {
-                    "key1": "value1",
-                    "key2": "%VALUE%"
+                    "cmd": "messaging",
+                    "task": "%CMD%",
+                    "data": "%DATA%"
                 }
             },
+            "email-sender": {
+                "url": "http://example.com/email-api",
+                "method": "POST",
+                "data": {
+                    "cmd": "deliver-email",
+                    "hash": "%HASH%"
+                }
+            },
+            "user-notifier": {
+                "bin": "/home/myapp/update-user.sh",
+                "args": [
+                    "%ACTION%",
+                    "%DATA%"
+                ]
+            }
         }
     }
 }

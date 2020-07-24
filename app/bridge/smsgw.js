@@ -60,7 +60,7 @@ class SMSGateway extends Bridge {
                     this.connected = true;
                 })
                 .on('disconnect', () => {
-                    console.log('Disconnected from SMS Gateway at %s', url);
+                    console.log('Disconnected from SMS Gateway at %s', config.url);
                     this.connected = false;
                 })
                 .on('auth', (success) => {

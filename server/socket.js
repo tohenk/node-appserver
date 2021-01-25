@@ -153,7 +153,7 @@ class AppServer {
             io = Servers[port]['io'];
         }
         if (!io) {
-            io = require('socket.io').listen(server);
+            io = require('socket.io')(server);
         }
         if (!Servers[port]['io']) {
             Servers[port]['io'] = io;

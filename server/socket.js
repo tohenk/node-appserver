@@ -119,7 +119,7 @@ class AppServer {
         const configs = options.params || {};
         const params = {};
         const port = options.port;
-        const socket = this.createSocket(server, port);
+        const socket = this.createSocket(server, port, options.cors ? {cors: options.cors} : {});
         const factory = (ns, options) => {
             const tmp = [];
             if (namespace) tmp.push(namespace);
@@ -144,7 +144,7 @@ class AppServer {
         return instance;
     }
 
-    createSocket(server, port) {
+    createSocket(server, port, options) {
         if (!server) {
             throw new Error('Socket IO need a server to be assigned.');
         }
@@ -153,7 +153,11 @@ class AppServer {
             io = Servers[port]['io'];
         }
         if (!io) {
-            io = require('socket.io')(server);
+            let opts = {};
+            if (options && options.cors) {
+                opts.cors = options.cors;
+            }
+            io = require('socket.io')(server, opts);
         }
         if (!Servers[port]['io']) {
             Servers[port]['io'] = io;

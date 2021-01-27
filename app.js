@@ -30,7 +30,7 @@ global.ENV_CONFIG = 'NT_APP_CONFIG';
 
 const
     path        = require('path'),
-    cmd         = require('./lib/cmd');
+    cmd         = require('@ntlab/ntlib/cmd');
     
 // === command line setup ===
 

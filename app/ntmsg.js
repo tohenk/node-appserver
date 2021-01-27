@@ -24,8 +24,8 @@
 
 const fs      = require('fs');
 const path    = require('path');
-const util    = require('../lib/util');
-const Logger  = require('../lib/logger');
+const util    = require('@ntlab/ntlib/util');
+const Logger  = require('@ntlab/ntlib/logger');
 const Bridge  = require('./bridge/bridge');
 
 const Connections = {};
@@ -100,7 +100,7 @@ class MessagingServer {
     }
 
     getCmd(config, args, values) {
-        return require('../lib/command')(config, {
+        return require('@ntlab/ntlib/command')(config, {
             paths: this.getPaths(),
             args: args,
             values: values

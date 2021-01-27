@@ -23,8 +23,8 @@
  */
 
 const path    = require('path');
-const util    = require('../lib/util');
-const Logger  = require('../lib/logger');
+const util    = require('@ntlab/ntlib/util');
+const Logger  = require('@ntlab/ntlib/logger');
 
 class ReportServer {
 
@@ -103,7 +103,7 @@ class ReportServer {
 
     createHandler(name, options) {
         const configPath = path.dirname(this.appserver.config);
-        const cmd = require('../lib/command')(options, {paths: [__dirname, configPath], args: ['%REPORTID%']});
+        const cmd = require('@ntlab/ntlib/command')(options, {paths: [__dirname, configPath], args: ['%REPORTID%']});
         this.handlers[name] = cmd;
         return cmd;
     }

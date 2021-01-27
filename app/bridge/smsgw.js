@@ -25,8 +25,8 @@
 const fs      = require('fs');
 const path    = require('path');
 const io      = require('socket.io-client');
+const Queue   = require('@ntlab/ntlib/queue');
 const Bridge  = require('./bridge');
-const Queue   = require('../../lib/queue');
 
 class SMSGateway extends Bridge {
 

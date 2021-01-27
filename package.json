@@ -3,6 +3,7 @@
     "version": "1.0.0",
     "private": true,
     "dependencies": {
+        "@ntlab/ntlib": "^1.0.1",
         "@xmpp/client": "^0.12.0",
         "bufferutil": "^4.0.1",
         "debug": "^4.1.1",

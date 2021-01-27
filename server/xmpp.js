@@ -27,8 +27,8 @@ const path  = require('path');
 const u     = require('util');
 const xmpp  = require('@xmpp/client');
 const debug = require('debug')('appserver-xmpp');
-const cmd   = require('./../lib/cmd');
-const util  = require('./../lib/util');
+const cmd   = require('@ntlab/ntlib/cmd');
+const util  = require('@ntlab/ntlib/util');
 
 /**
  * App Server Handler for XMPP.

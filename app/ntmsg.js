@@ -1,7 +1,7 @@
 /**
  * The MIT License (MIT)
  *
- * Copyright (c) 2016-2020 Toha <tohenk@yahoo.com>
+ * Copyright (c) 2016-2022 Toha <tohenk@yahoo.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
  * this software and associated documentation files (the "Software"), to deal in
@@ -116,6 +116,10 @@ class MessagingServer {
             p.on('exit', (code) => {
                 this.log('CLI: Result %s...', code);
                 resolve(code);
+            });
+            p.on('error', (err) => {
+                this.log('ERR: %s...', err);
+                reject(err);
             });
             p.stdout.on('data', (line) => {
                 const lines = util.cleanBuffer(line).split('\n');

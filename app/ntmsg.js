@@ -30,10 +30,11 @@ const Bridge  = require('./bridge/bridge');
 
 const Connections = {};
 
-class MessagingServer {
+const CON_SERVER = 1
+const CON_LISTENER = 2
+const CON_CLIENT = 3
 
-    CON_SERVER = 1
-    CON_CLIENT = 2
+class MessagingServer {
 
     appserver = null
     con = null
@@ -41,6 +42,7 @@ class MessagingServer {
     options = null
     registerTimeout = 60
     serverRoom = 'server'
+    listenerRoom = 'listener'
     bridges = []
 
     constructor(appserver, factory, config, options) {
@@ -184,7 +186,7 @@ class MessagingServer {
         const users = [];
         const uids = [];
         for (let id in Connections) {
-            if (Connections[id].type == this.CON_CLIENT) {
+            if (Connections[id].type == CON_CLIENT) {
                 if (uids.indexOf(Connections[id].uid) < 0) {
                     users.push({uid: Connections[id].uid, time: Connections[id].time});
                     uids.push(Connections[id].uid);
@@ -206,11 +208,15 @@ class MessagingServer {
         if (Connections[con.id]) {
             const data = Connections[con.id];
             switch (data.type) {
-                case this.CON_SERVER:
+                case CON_SERVER:
                     con.leave(this.serverRoom);
                     this.log('SVR: %s: Disconnected...', con.id);
                     break;
-                case this.CON_CLIENT:
+                case CON_LISTENER:
+                    con.leave(this.listenerRoom);
+                    this.log('LST: %s: Disconnected...', con.id);
+                    break;
+                case CON_CLIENT:
                     con.leave(data.uid);
                     // notify other users someone is offline
                     this.con.emit('user-offline', data.uid);
@@ -270,6 +276,7 @@ class MessagingServer {
             if (data.id && data.params) {
                 this.deliverData(data.id, data.params);
             }
+            this.con.to(this.listenerRoom).emit('data', data);
         });
         // handle bridges server connection
         this.bridges.forEach((bridge) => {
@@ -300,38 +307,39 @@ class MessagingServer {
             con.disconnect(true);
         }, this.registerTimeout * 1000);
         con.on('register', (data) => {
-            let dismiss = true;
-            const info = {};
+            let info;
             // is it a server connection?
             if (data.sid) {
-                if (data.sid == this.serverKey) {
-                    dismiss = false;
-                    info.sid = data.sid;
-                    info.type = this.CON_SERVER;
-                    con.join(this.serverRoom);
+                info = this.regCon(con, data, CON_SERVER, 'sid', this.serverRoom, true);
+                if (info) {
                     this.handleServerCon(con);
                     this.log('SVR: %s: Connected...', con.id);
                 } else {
                     this.log('SVR: %s: Didn\'t send correct key...', con.id);
                 }
+            } else if (data.xid) {
+                info = this.regCon(con, data, CON_LISTENER, 'xid', this.listenerRoom, true);
+                if (info) {
+                    this.log('LTR: %s: Connected...', con.id);
+                } else {
+                    this.log('LTR: %s: Didn\'t send correct key...', con.id);
+                }
             } else if (data.uid) {
-                dismiss = false;
-                info.uid = data.uid;
-                info.type = this.CON_CLIENT;
+                info = this.regCon(con, data, CON_CLIENT, 'uid');
                 con.join(data.uid);
                 this.handleClientCon(con);
                 // notify other users someone is online
                 this.con.emit('user-online', data.uid);
                 this.log('USR: %s: %s connected...', con.id, data.uid);
             } else {
-                this.log('ERR: %s: Invalid registration...', con.id, data.uid);
+                this.log('ERR: %s: Invalid registration...', con.id);
             }
-            if (dismiss) {
-                con.disconnect(true);
-                this.log('ERR: %s: Forced disconnect...', con.id);
-            } else {
+            if (info) {
                 this.addCon(con, info);
                 clearTimeout(t);
+            } else {
+                con.disconnect(true);
+                this.log('ERR: %s: Forced disconnect...', con.id);
             }
         });
         con.on('disconnect', () => {
@@ -340,6 +348,21 @@ class MessagingServer {
                 bridge.disconnect(con);
             });
         });
+    }
+
+    regCon(con, data, type, key, room, authenticate) {
+        const info = {};
+        if (authenticate && data[key] != this.serverKey) {
+            return;
+        }
+        info.type = type;
+        info[key] = data[key];
+        if (room) {
+            con.join(room);
+        } else {
+            con.join(data[key]);
+        }
+        return info;
     }
 
     listen(con) {

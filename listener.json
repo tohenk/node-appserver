@@ -1,0 +1,10 @@
+{
+	"url": "http://localhost:8080/ntmsg",
+	"secret": "mysecret",
+	"listens": {
+		"remove-cache": {
+			"bin": "/home/myapp/remove-cache.sh",
+			"args": ["%DATA%"]
+		}
+	}
+}

@@ -148,7 +148,7 @@ class AppServer {
         if (!server) {
             throw new Error('Socket IO need a server to be assigned.');
         }
-        let io = null;
+        let io;
         if (Servers[port]) {
             io = Servers[port]['io'];
         }
@@ -157,7 +157,8 @@ class AppServer {
             if (options && options.cors) {
                 opts.cors = options.cors;
             }
-            io = require('socket.io')(server, opts);
+            const { Server } = require('socket.io');
+            io = new Server(server, opts);
         }
         if (!Servers[port]['io']) {
             Servers[port]['io'] = io;

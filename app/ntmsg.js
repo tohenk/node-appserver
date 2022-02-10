@@ -82,7 +82,7 @@ class MessagingServer {
 
     createBridges() {
         if (this.config.bridges) {
-            this.config.bridges.forEach((bridge) => {
+            this.config.bridges.forEach(bridge => {
                 const BridgeClass = require(bridge);
                 const br = new BridgeClass(this);
                 if (br instanceof Bridge) {
@@ -112,24 +112,24 @@ class MessagingServer {
     execCmd(cmd, values) {
         return new Promise((resolve, reject) => {
             const p = cmd.exec(values);
-            p.on('message', (data) => {
+            p.on('message', data => {
                 console.log('Message from process: %s', JSON.stringify(data));
             });
-            p.on('exit', (code) => {
+            p.on('exit', code => {
                 this.log('CLI: Result %s...', code);
                 resolve(code);
             });
-            p.on('error', (err) => {
+            p.on('error', err => {
                 this.log('ERR: %s...', err);
                 reject(err);
             });
-            p.stdout.on('data', (line) => {
+            p.stdout.on('data', line => {
                 const lines = util.cleanBuffer(line).split('\n');
                 for (let i = 0; i < lines.length; i++) {
                     this.log('CLI: %s', lines[i]);
                 }
             });
-            p.stderr.on('data', (line) => {
+            p.stderr.on('data', line => {
                 const lines = util.cleanBuffer(line).split('\n');
                 for (let i = 0; i < lines.length; i++) {
                     this.log('CLI: %s', lines[i]);
@@ -236,7 +236,7 @@ class MessagingServer {
                 this.log('SVR: %s: User: %s, time: %d', con.id, users[i].uid, users[i].time);
             }
         });
-        con.on('notification', (data) => {
+        con.on('notification', data => {
             this.log('SVR: %s: New notification for %s...', con.id, data.uid);
             const notif = {
                 message: data.message
@@ -245,17 +245,17 @@ class MessagingServer {
             if (data.referer) notif.referer = data.referer;
             this.con.to(data.uid).emit('notification', notif);
         });
-        con.on('push-notification', (data) => {
+        con.on('push-notification', data => {
             this.log('SVR: %s: Push notification: %s...', con.id, JSON.stringify(data));
             if (data.name != undefined) {
                 this.con.emit(data.name, data.data != undefined ? data.data : {});
             }
         });
-        con.on('message', (data) => {
+        con.on('message', data => {
             this.log('SVR: %s: New message for %s...', con.id, data.uid);
             this.con.to(data.uid).emit('message');
         });
-        con.on('deliver-email', (data) => {
+        con.on('deliver-email', data => {
             this.log('SVR: %s: Deliver email %s...', con.id, data.hash);
             if (data.attr) {
                 this.deliverEmail(data.hash, data.attr);
@@ -263,15 +263,15 @@ class MessagingServer {
                 this.deliverEmail(data.hash);
             }
         });
-        con.on('user-signin', (data) => {
+        con.on('user-signin', data => {
             this.log('SVR: %s: User signin %s...', con.id, data.username);
             this.notifySignin('SIGNIN', data);
         });
-        con.on('user-signout', (data) => {
+        con.on('user-signout', data => {
             this.log('SVR: %s: User signout %s...', con.id, data.username);
             this.notifySignin('SIGNOUT', data);
         });
-        con.on('data', (data) => {
+        con.on('data', data => {
             this.log('SVR: %s: Receiving data %s...', con.id, JSON.stringify(data));
             if (data.id && data.params) {
                 this.deliverData(data.id, data.params);
@@ -279,24 +279,24 @@ class MessagingServer {
             this.con.to(this.listenerRoom).emit('data', data);
         });
         // handle bridges server connection
-        this.bridges.forEach((bridge) => {
+        this.bridges.forEach(bridge => {
             bridge.handleServer(con);
         });
     }
 
     handleClientCon(con) {
-        con.on('notification-read', (data) => {
+        con.on('notification-read', data => {
             if (data.uid) {
                 this.con.to(data.uid).emit('notification-read', data);
             }
         });
-        con.on('message-sent', (data) => {
+        con.on('message-sent', data => {
             if (data.uid) {
                 this.con.to(data.uid).emit('message-sent', data);
             }
         });
         // handle bridges client connection
-        this.bridges.forEach((bridge) => {
+        this.bridges.forEach(bridge => {
             bridge.handleClient(con);
         });
     }
@@ -306,7 +306,7 @@ class MessagingServer {
         const t = setTimeout(() => {
             con.disconnect(true);
         }, this.registerTimeout * 1000);
-        con.on('register', (data) => {
+        con.on('register', data => {
             let info;
             // is it a server connection?
             if (data.sid) {
@@ -344,7 +344,7 @@ class MessagingServer {
         });
         con.on('disconnect', () => {
             this.removeCon(con);
-            this.bridges.forEach((bridge) => {
+            this.bridges.forEach(bridge => {
                 bridge.disconnect(con);
             });
         });
@@ -367,7 +367,7 @@ class MessagingServer {
 
     listen(con) {
         if (this.appserver.id == 'socket.io') {
-            con.on('connection', (client) => {
+            con.on('connection', client => {
                 this.setupCon(client);
             });
         } else {
@@ -376,7 +376,7 @@ class MessagingServer {
     }
 
     doClose(server) {
-        this.bridges.forEach((bridge) => {
+        this.bridges.forEach(bridge => {
             bridge.finalize();
         });
     }

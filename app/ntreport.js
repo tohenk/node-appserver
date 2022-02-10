@@ -49,7 +49,7 @@ class ReportServer {
         }
         const con = this.factory();
         if (this.appserver.id == 'socket.io') {
-            con.on('connection', (client) => {
+            con.on('connection', client => {
                 this.handleCon(client);
             });
         } else {
@@ -68,22 +68,26 @@ class ReportServer {
     }
 
     handleCon(con, cmd) {
-        con.on('report', (data) => {
+        con.on('report', data => {
             this.log('%s: Generating report %s...', con.id, data.hash);
             if (cmd == undefined && data.namespace) {
                 cmd = this.handlers[data.namespace];
             }
             if (cmd == undefined) return;
-            const p = cmd.exec({REPORTID: data.hash});
-            p.on('exit', (code) => {
+            const params = {REPORTID: data.hash};
+            if (data.data) {
+                params.DATA = JSON.stringify(data.data);
+            }
+            const p = cmd.exec(params);
+            p.on('exit', code => {
                 this.log('%s: %s status is %s...', con.id, data.hash, code);
-                con.emit('done', { hash: data.hash, code: code });
+                con.emit('done', {hash: data.hash, code: code});
             });
-            p.on('error', (err) => {
+            p.on('error', err => {
                 this.log('%s: %s: %s...', con.id, data.hash, err);
-                con.emit('done', { hash: data.hash, code: err.message });
+                con.emit('done', {hash: data.hash, code: err.message});
             });
-            p.stdout.on('data', (line) => {
+            p.stdout.on('data', line => {
                 const lines = util.cleanBuffer(line).split('\n');
                 for (let i = 0; i < lines.length; i++) {
                     this.log('%s: %s', con.id, lines[i]);
@@ -93,10 +97,10 @@ class ReportServer {
                 const matches = re.exec(line);
                 if (matches) {
                     const progress = parseInt(matches[1]);
-                    con.emit('progress', { hash: data.hash, progress: progress });
+                    con.emit('progress', {hash: data.hash, progress: progress});
                 }
             });
-            p.stderr.on('data', (line) => {
+            p.stderr.on('data', line => {
                 const lines = util.cleanBuffer(line).split('\n');
                 for (let i = 0; i < lines.length; i++) {
                     this.log('%s: %s', con.id, lines[i]);
@@ -107,7 +111,10 @@ class ReportServer {
 
     createHandler(name, options) {
         const configPath = path.dirname(this.appserver.config);
-        const cmd = require('@ntlab/ntlib/command')(options, {paths: [__dirname, configPath], args: ['%REPORTID%']});
+        const cmd = require('@ntlab/ntlib/command')(options, {
+            paths: [__dirname, configPath],
+            args: ['%REPORTID%', '%DATA%']
+        });
         this.handlers[name] = cmd;
         return cmd;
     }

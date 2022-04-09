@@ -7,7 +7,7 @@
         "@xmpp/client": "^0.12.0",
         "bufferutil": "^4.0.1",
         "debug": "^4.1.1",
-        "minimist": "^1.2.5",
+        "minimist": "^1.2.6",
         "socket.io": "^4.4.1",
         "socket.io-client": "^4.4.1",
         "utf-8-validate": "^5.0.2",

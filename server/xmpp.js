@@ -91,7 +91,6 @@ class AppServer {
         }
         return cnt;
     }
-
 }
 
 class XmppConnection {
@@ -114,7 +113,7 @@ class XmppConnection {
             password: this.password,
             host: this.jid.substr(this.jid.indexOf('@') + 1)
         });
-        this.con.on('online', (data) => {
+        this.con.on('online', data => {
             this.id = data.jid;
             const presence = new xmpp.Stanza('presence', {
                 to: this.room + '/' + this.uid
@@ -122,7 +121,7 @@ class XmppConnection {
             presence.c('x', { xmlns: 'http://jabber.org/protocol/muc' });
             this.con.send(presence);
         });
-        this.con.on('stanza', (stanza) => {
+        this.con.on('stanza', stanza => {
             if (stanza.is('presence')) {
                 this.onPresence(stanza);
             }
@@ -146,7 +145,7 @@ class XmppConnection {
                 }
             }
         });
-        this.con.on('error', (err) => {
+        this.con.on('error', err => {
             console.error(err);
             // retry on error
             debug('Retrying connection in 30 seconds.');
@@ -321,7 +320,6 @@ class XmppConnection {
         this._to = uid;
         return this;
     }
-
 }
 
 module.exports = AppServer;

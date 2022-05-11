@@ -49,8 +49,8 @@ class Sippol extends Bridge {
                     console.log('Disconnected from SIPPOL Bridge at %s', config.url);
                     this.connected = false;
                 })
-                .on('status', (status) => {
-                    this.clients.forEach((con) => {
+                .on('status', status => {
+                    this.clients.forEach(con => {
                         con.emit('sippol-status', status);
                     });
                 })
@@ -82,7 +82,6 @@ class Sippol extends Bridge {
             this.clients.splice(idx);
         }
     }
-
 }
 
 module.exports = Sippol;

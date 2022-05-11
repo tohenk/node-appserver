@@ -91,24 +91,24 @@ class App {
     execCmd(cmd, values) {
         return new Promise((resolve, reject) => {
             const p = cmd.exec(values);
-            p.on('message', (data) => {
+            p.on('message', data => {
                 console.log('Message from process: %s', JSON.stringify(data));
             });
-            p.on('exit', (code) => {
+            p.on('exit', code => {
                 console.log('CLI: Result %s...', code);
                 resolve(code);
             });
-            p.on('error', (err) => {
+            p.on('error', err => {
                 console.log('ERR: %s...', err);
                 reject(err);
             });
-            p.stdout.on('data', (line) => {
+            p.stdout.on('data', line => {
                 const lines = util.cleanBuffer(line).split('\n');
                 for (let i = 0; i < lines.length; i++) {
                     console.log('CLI: %s', lines[i]);
                 }
             });
-            p.stderr.on('data', (line) => {
+            p.stderr.on('data', line => {
                 const lines = util.cleanBuffer(line).split('\n');
                 for (let i = 0; i < lines.length; i++) {
                     console.log('CLI: %s', lines[i]);
@@ -139,7 +139,7 @@ class App {
             .on('disconnect', () => {
                 console.log('Disconnected from %s', this.config.url);
             })
-            .on('data', (data) => {
+            .on('data', data => {
                 const event = data.id;
                 const payload = data.params;
                 if (this.cmds[event]) {

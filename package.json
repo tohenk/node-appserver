@@ -3,14 +3,11 @@
     "version": "1.0.0",
     "private": true,
     "dependencies": {
-        "@ntlab/ntlib": "^1.0.1",
+        "@ntlab/ntlib": "^2.0.0",
+        "@ntlab/work": "^1.0.0",
         "@xmpp/client": "^0.12.0",
-        "bufferutil": "^4.0.1",
-        "debug": "^4.1.1",
-        "minimist": "^1.2.5",
-        "socket.io": "^4.4.1",
-        "socket.io-client": "^4.4.1",
-        "utf-8-validate": "^5.0.2",
-        "ws": "^7.4.6"
+        "debug": "^4.3.4",
+        "socket.io": "^4.5.0",
+        "socket.io-client": "^4.5.0"
     }
 }

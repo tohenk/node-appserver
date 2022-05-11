@@ -380,7 +380,6 @@ class MessagingServer {
             bridge.finalize();
         });
     }
-
 }
 
 module.exports = MessagingServer;

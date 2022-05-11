@@ -25,7 +25,7 @@
 const fs      = require('fs');
 const path    = require('path');
 const io      = require('socket.io-client');
-const Queue   = require('@ntlab/ntlib/queue');
+const Queue   = require('@ntlab/work/queue');
 const Bridge  = require('./bridge');
 
 class SMSGateway extends Bridge {
@@ -63,7 +63,7 @@ class SMSGateway extends Bridge {
                     console.log('Disconnected from SMS Gateway at %s', config.url);
                     this.connected = false;
                 })
-                .on('auth', (success) => {
+                .on('auth', success => {
                     if (!success) {
                         console.log('Authentication with SMS Gateway failed!');
                     } else {
@@ -82,7 +82,7 @@ class SMSGateway extends Bridge {
                     this.getApp().log('SMS: %s: New message from %s', hash, number);
                     this.addNotification('MESG', JSON.stringify({date: time, number: number, message: message, hash: hash}));
                 })
-                .on('status-report', (data) => {
+                .on('status-report', data => {
                     if (data.hash) {
                         this.getApp().log('SMS: %s: Delivery status for %s is %s', data.hash, data.address, data.code);
                         this.addNotification('DELV', JSON.stringify({hash: data.hash, number: data.address, code: data.code, sent: data.sent, received: data.received}));
@@ -110,7 +110,7 @@ class SMSGateway extends Bridge {
                 this.getApp().log('GWY: %s queue(s) loaded from %s...', savedQueues.length, this.queueFilename);
             }
         }
-        this.queue = new Queue(queues, (data) => {
+        this.queue = new Queue(queues, data => {
             const msg = {
                 hash: data.hash,
                 address: data.number,
@@ -137,7 +137,7 @@ class SMSGateway extends Bridge {
             DATA: data
         }
         if (!this.notifyQueue) {
-            this.notifyQueue = new Queue([queue], (q) => {
+            this.notifyQueue = new Queue([queue], q => {
                 if (this.notifyCmd) {
                     this.getApp().execCmd(this.notifyCmd, q)
                         .then(() => {
@@ -152,14 +152,13 @@ class SMSGateway extends Bridge {
     }
 
     handleServer(con) {
-        con.on('text-message', (data) => {
+        con.on('text-message', data => {
             this.getApp().log('SVR: %s: Send text to %s "%s"...', con.id, data.number, data.message);
             if (this.queue) {
                 this.queue.requeue([data]);
             }
         });
     }
-
 }
 
 module.exports = SMSGateway;

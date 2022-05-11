@@ -118,7 +118,6 @@ class ReportServer {
         this.handlers[name] = cmd;
         return cmd;
     }
-
 }
 
 module.exports = ReportServer;

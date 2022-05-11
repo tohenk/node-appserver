@@ -223,7 +223,6 @@ class AppServer {
         });
         return cnt;
     }
-
 }
 
 module.exports = AppServer;

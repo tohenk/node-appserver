@@ -226,9 +226,11 @@ class WAWeb extends ChatConsumer {
     initialize(config) {
         this.id = 'wa';
         this.waNumbersFile = path.join(path.dirname(this.parent.getApp().queueDir), 'wanumbers.json');
-        this.client = new Client({
-            authStrategy: new LocalAuth(),
-        });
+        const params = {authStrategy: new LocalAuth()};
+        if (config.puppeteer) {
+            params.puppeteer = config.puppeteer;
+        }
+        this.client = new Client(params);
         this.client
             .on('qr', qr => {
                 const qrcode = require('qrcode-terminal');

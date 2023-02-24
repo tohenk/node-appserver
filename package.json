@@ -3,11 +3,13 @@
     "version": "1.0.0",
     "private": true,
     "dependencies": {
-        "@ntlab/ntlib": "^2.0.0",
+        "@ntlab/ntlib": "^2.0.1",
         "@ntlab/work": "^1.1.2",
         "@xmpp/client": "^0.12.0",
         "debug": "^4.3.4",
-        "socket.io": "^4.5.4",
-        "socket.io-client": "^4.5.4"
+        "qrcode-terminal": "^0.12.0",
+        "socket.io": "^4.6.1",
+        "socket.io-client": "^4.6.1",
+        "whatsapp-web.js": "^1.19.4"
     }
 }

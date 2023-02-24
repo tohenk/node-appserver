@@ -1,6 +1,5 @@
 logs/
 node_modules/
 queue/
-.settings/
-.project
-.buildpath
+.wwebjs_auth/
+wanumbers.json

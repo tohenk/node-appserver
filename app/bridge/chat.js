@@ -32,8 +32,7 @@ const { Client, LocalAuth, MessageAck } = require('whatsapp-web.js');
 
 class ChatGateway extends Bridge {
 
-    wa = null
-    smsgw = null
+    consumers = []
     queue = null
     notifyQueue = null
     notifyCmd = null
@@ -53,15 +52,17 @@ class ChatGateway extends Bridge {
 
     setupWAWeb(config) {
         if (config) {
-            this.wa = new WAWeb(this);
-            this.wa.initialize(config);
+            const wa = new WAWeb(this);
+            wa.initialize(config);
+            this.consumers.push(wa);
         }
     }
 
     setupSMSGateway(config) {
         if (config && config.url) {
-            this.smsgw = new SMSGateway(this);
-            this.smsgw.initialize(config);
+            const smsgw = new SMSGateway(this);
+            smsgw.initialize(config);
+            this.consumers.push(smsgw);
         }
     }
 
@@ -125,22 +126,29 @@ class ChatGateway extends Bridge {
     consume(msg, retry) {
         return new Promise((resolve, reject) => {
             let handler;
-            [this.wa, this.smsgw].forEach(consumer => {
-                if (consumer && consumer.canHandle(msg)) {
+            const q = new Queue([...this.consumers], consumer => {
+                if (consumer.canHandle(msg)) {
+                    this.getApp().log('CHAT: %s handling %s...', consumer.constructor.name, JSON.stringify(msg));
                     handler = consumer;
                     consumer.canConsume(msg, retry)
                         .then(res => {
                             if (res) {
+                                q.done();
                                 resolve();
-                                return true;
+                            } else {
+                                q.next();
                             }
                         })
                         .catch(err => reject(err));
+                } else {
+                    q.next();
                 }
             });
-            if (!handler) {
-                reject('No queue handler!');
-            }
+            q.once('done', () => {
+                if (!handler) {
+                    reject('No queue handler!');
+                }
+            });
         });
     }
 
@@ -163,8 +171,8 @@ class ChatGateway extends Bridge {
 
     onState(sender) {
         let cnt = 0;
-        [this.wa, this.smsgw].forEach(consumer => {
-            if (consumer && consumer.isConnected()) {
+        this.consumers.forEach(consumer => {
+            if (consumer.isConnected()) {
                 cnt++;
             }
         });

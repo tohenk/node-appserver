@@ -32,10 +32,10 @@ class Sipd extends Bridge {
     clients = []
 
     onInit() {
-        this.setupsipd(this.getConfig('sipd'));
+        this.setupSipd(this.getConfig('sipd'));
     }
 
-    setupsipd(config) {
+    setupSipd(config) {
         if (config && config.url) {
             console.log('SIPD Bridge at %s', config.url);
             this.sipd = io(config.url);

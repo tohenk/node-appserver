@@ -9,8 +9,15 @@
         "logdir": "logs",
         "params": {
             "bridges": [
-                "./bridge/smsgw"
+                "./bridge/chat"
             ],
+            "whatsapp": {
+                "admin": "+6281234567890",
+                "delay": [3000, 5000],
+                "puppeteer": {
+                    "args": ["--no-sandbox", "--disable-setuid-sandbox"]
+                }
+            },
             "smsgw": {
                 "url": "http://example.com/gw",
                 "secret": "mysecret",

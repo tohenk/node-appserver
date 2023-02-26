@@ -1,7 +1,7 @@
 {
-    "myapp": {
-        "title": "MyApp that is doing something",
-        "module": "./app/myapp",
+    "messaging": {
+        "title": "Messaging Connector (XMPP)",
+        "module": "./app/ntmsg",
         "enabled": true,
         "jid": "user@localhost",
         "password": "mypass",
@@ -9,10 +9,45 @@
         "uid": "nick",
         "logdir": "logs",
         "params": {
-            "something": {
-                "cli": "/path/to/cli"
+            "bridges": [
+                "./bridge/chat"
+            ],
+            "whatsapp": {
+                "admin": "+6281234567890",
+                "delay": [3000, 5000],
+                "puppeteer": {
+                    "args": ["--no-sandbox", "--disable-setuid-sandbox"]
+                }
             },
-            "other": "/path/to/other/cli"
+            "smsgw": {
+                "url": "http://example.com/gw",
+                "secret": "mysecret",
+                "group": "mygroup"
+            },
+            "text-client": {
+                "url": "http://example.com/text-api",
+                "method": "POST",
+                "data": {
+                    "cmd": "messaging",
+                    "task": "%CMD%",
+                    "data": "%DATA%"
+                }
+            },
+            "email-sender": {
+                "url": "http://example.com/email-api",
+                "method": "POST",
+                "data": {
+                    "cmd": "deliver-email",
+                    "hash": "%HASH%"
+                }
+            },
+            "user-notifier": {
+                "bin": "/home/myapp/update-user.sh",
+                "args": [
+                    "%ACTION%",
+                    "%DATA%"
+                ]
+            }
         }
     }
 }

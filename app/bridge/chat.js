@@ -90,6 +90,9 @@ class ChatGateway extends Bridge {
                 address: data.number,
                 data: data.message
             }
+            if (data.consumer) {
+                msg.consumer = data.consumer;
+            }
             this.consume(msg, data.attr)
                 .then(() => this.queue.next())
                 .catch(err => {
@@ -98,7 +101,7 @@ class ChatGateway extends Bridge {
                 });
         }, () => {
             if (!this.ready) {
-                this.getApp().log('CHAT: Not ready!');
+                this.getApp().log('CGW: Not ready!');
             }
             return this.ready;
         });
@@ -110,7 +113,7 @@ class ChatGateway extends Bridge {
             queues = JSON.parse(fs.readFileSync(this.queueFilename));
             if (queues.length) {
                 fs.writeFileSync(this.queueFilename, JSON.stringify([]));
-                this.getApp().log('CHAT: %s queue(s) loaded from %s...', queues.length, this.queueFilename);
+                this.getApp().log('CGW: %s queue(s) loaded from %s...', queues.length, this.queueFilename);
             }
         }
         return queues;
@@ -119,7 +122,7 @@ class ChatGateway extends Bridge {
     saveQueue() {
         if (this.queue && this.queue.queues.length) {
             fs.writeFileSync(this.queueFilename, JSON.stringify(this.queue.queues));
-            this.getApp().log('CHAT: Queue saved to %s...', this.queueFilename);
+            this.getApp().log('CGW: Queue saved to %s...', this.queueFilename);
         }
     }
 
@@ -128,7 +131,7 @@ class ChatGateway extends Bridge {
             let handler;
             const q = new Queue([...this.consumers], consumer => {
                 if (consumer.canHandle(msg)) {
-                    this.getApp().log('CHAT: %s handling %s...', consumer.constructor.name, JSON.stringify(msg));
+                    this.getApp().log('CGW: %s handling %s...', consumer.constructor.name, JSON.stringify(msg));
                     handler = consumer;
                     consumer.canConsume(msg, retry)
                         .then(res => {
@@ -178,8 +181,8 @@ class ChatGateway extends Bridge {
         });
         this.ready = cnt > 0;
         if (this.ready) {
-            this.getApp().log('CHAT: Ready for processing...');
-            this.queue.next();
+            this.getApp().log('CGW: Ready for processing...');
+            setTimeout(() => this.queue.next(), 5000);
         }
     }
 
@@ -214,10 +217,13 @@ class ChatConsumer {
     }
 
     canHandle(msg) {
-        if (msg.consumer) {
-            return msg.consumer == this.id;
+        if (this.isConnected()) {
+            if (msg.consumer) {
+                return msg.consumer == this.id;
+            }
+            return true;
         }
-        return true;
+        return false;
     }
 
     canConsume(msg, retry) {
@@ -229,11 +235,20 @@ class WAWeb extends ChatConsumer {
 
     client = null
     numbers = null
+    qrnotify = null
+    qrcount = 0
+    delay = 0
     messages = []
 
     initialize(config) {
         this.id = 'wa';
         this.waNumbersFile = path.join(path.dirname(this.parent.getApp().queueDir), 'wanumbers.json');
+        if (typeof config['delay'] != 'undefined') {
+            if (!(typeof config['delay'] == 'number' || Array.isArray(config['delay']))) {
+                throw new Error('Delay only accept number or array of [min, max]!');
+            }
+            this.delay = config['delay'];
+        }
         const params = {authStrategy: new LocalAuth()};
         if (config.puppeteer) {
             params.puppeteer = config.puppeteer;
@@ -241,18 +256,24 @@ class WAWeb extends ChatConsumer {
         this.client = new Client(params);
         this.client
             .on('qr', qr => {
-                const qrcode = require('qrcode-terminal');
-                qrcode.generate(qr, {small: true});
-                if (config.admin) {
-                    const time = new Date();
-                    const message = 'WhatsApp Web requires QR Code authentication';
-                    const hash = this.getHash(time, config.admin, message);
-                    this.parent.queue.requeue([{hash: hash, number: config.admin, message: message, consumer: 'sms'}]);
+                const time = new Date();
+                const interval = config['qr-notify-interval'] || 600000; // 10 minutes
+                const notifyRetry = config['qr-notify-retry'] || 3;
+                if (this.qrnotify == null || (time.getTime() > this.qrnotify.getTime() + interval)) {
+                    this.qrnotify = time;
+                    const qrcode = require('qrcode-terminal');
+                    qrcode.generate(qr, {small: true});
+                    if (config.admin && this.qrcount++ < notifyRetry) {
+                        const message = `WhatsApp Web requires QR Code authentication: ${qr}`;
+                        const hash = this.getHash(time, config.admin, message);
+                        this.parent.queue.requeue([{hash: hash, number: config.admin, message: message, consumer: 'sms'}]);
+                    }
                 }
             })
             .on('ready', () => {
                 console.log('WhatsApp Web is ready...');
                 this.connected = true;
+                this.qrcount = 0
                 this.parent.onState(this);
             })
             .on('disconnected', () => {
@@ -268,7 +289,7 @@ class WAWeb extends ChatConsumer {
                     const number = '+' + contact.number;
                     const hash = this.getHash(time, number, msg.body);
                     const data = {date: time, number: number, message: msg.body, hash: hash};
-                    this.parent.getApp().log('WAWEB: New message %s', JSON.stringify(data));
+                    this.parent.getApp().log('WAW: New message %s', JSON.stringify(data));
                     this.parent.onMessage(data);
                 })
                 .catch(err => console.error(err));
@@ -293,7 +314,7 @@ class WAWeb extends ChatConsumer {
                         data.code = ack;
                         data.sent = this.messages[idx].ack.sent;
                         data.received = this.messages[idx].ack.received;
-                        this.parent.getApp().log('WAWEB: Message ack %s', JSON.stringify(data));
+                        this.parent.getApp().log('WAW: Message ack %s', JSON.stringify(data));
                         this.parent.onReport(data);
                         this.messages.splice(idx);
                     }
@@ -332,11 +353,19 @@ class WAWeb extends ChatConsumer {
                 [w => Promise.resolve(this.isWANumber(number))],
                 [w => this.client.getNumberId(number), w => w.getRes(0)],
                 [w => this.client.sendMessage(w.getRes(1)._serialized, msg.data), w => w.getRes(0)],
+                [w => Promise.resolve(this.getDelay()), w => w.getRes(0)],
+                [w => this.sleep(w.getRes(4)), w => w.getRes(0) && w.getRes(4) > 0],
                 [w => Promise.resolve(this.messages.push({data: msg, msg: w.getRes(2)})), w => w.getRes(0)],
                 [w => Promise.resolve(w.getRes(2) ? true : false), w => w.getRes(0)],
             ])
             .then(res => resolve(res))
             .catch(err => reject(err));
+        });
+    }
+
+    sleep(ms) {
+        return new Promise((resolve, reject) => {
+            setTimeout(() => resolve(), ms);
         });
     }
 
@@ -376,6 +405,17 @@ class WAWeb extends ChatConsumer {
         const shasum = require('crypto').createHash('sha1');
         shasum.update([dt.toISOString(), number, message].join(''));
         return shasum.digest('hex');
+    }
+
+    getDelay() {
+        if (Array.isArray(this.delay)) {
+            return this.getRnd(this.delay[0], this.delay[1]);
+        }
+        return this.delay;
+    }
+
+    getRnd(min, max) {
+        return Math.floor(Math.random() * (max - min)) + min;
     }
 }
 

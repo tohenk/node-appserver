@@ -149,7 +149,7 @@ class ChatGateway extends Bridge {
             });
             q.once('done', () => {
                 if (!handler) {
-                    reject('No queue handler!');
+                    reject('No consumer can handle message %s!', JSON.stringify(msg));
                 }
             });
         });
@@ -298,10 +298,10 @@ class WAWeb extends ChatConsumer {
                 const idx = this.getMsgIndex(msg);
                 if (idx >= 0) {
                     const time = new Date();
+                    if (!this.messages[idx].ack) {
+                        this.messages[idx].ack = {};
+                    }
                     if (ack == MessageAck.ACK_SERVER) {
-                        if (!this.messages[idx].ack) {
-                            this.messages[idx].ack = {};
-                        }
                         this.messages[idx].ack.sent = time;
                     }
                     if (ack >= MessageAck.ACK_DEVICE) {
@@ -353,9 +353,9 @@ class WAWeb extends ChatConsumer {
                 [w => Promise.resolve(this.isWANumber(number))],
                 [w => this.client.getNumberId(number), w => w.getRes(0)],
                 [w => this.client.sendMessage(w.getRes(1)._serialized, msg.data), w => w.getRes(0)],
+                [w => Promise.resolve(this.messages.push({data: msg, msg: w.getRes(2)})), w => w.getRes(0)],
                 [w => Promise.resolve(this.getDelay()), w => w.getRes(0)],
                 [w => this.sleep(w.getRes(4)), w => w.getRes(0) && w.getRes(4) > 0],
-                [w => Promise.resolve(this.messages.push({data: msg, msg: w.getRes(2)})), w => w.getRes(0)],
                 [w => Promise.resolve(w.getRes(2) ? true : false), w => w.getRes(0)],
             ])
             .then(res => resolve(res))

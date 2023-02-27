@@ -33,8 +33,9 @@ con
         console.log('Connected to %s', url);
         con.emit('register', {sid: sid});
         setTimeout(() => {
+            console.log('Sending test message to %s', number);
             const hash = new Date().getTime().toString();
-            con.emit('text-message', {hash: hash, number: number, message: 'Send message using whatsapp-web.js'});
+            con.emit('text-message', {hash: hash, number: number, message: 'Test message'});
         }, 1000);
     })
     .on('disconnect', () => {

@@ -311,7 +311,7 @@ class WAWeb extends ChatConsumer {
                             data.hash = this.messages[idx].data.hash;
                         }
                         data.number = this.messages[idx].data.address;
-                        data.code = ack;
+                        data.code = typeof config['ack-success'] != 'undefined' ? config['ack-success'] : ack;
                         data.sent = this.messages[idx].ack.sent;
                         data.received = this.messages[idx].ack.received;
                         this.parent.getApp().log('WAW: Message ack %s', JSON.stringify(data));

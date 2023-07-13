@@ -22,12 +22,12 @@
  * SOFTWARE.
  */
 
-const fs      = require('fs');
-const path    = require('path');
-const io      = require('socket.io-client');
-const Queue   = require('@ntlab/work/queue');
-const Work    = require('@ntlab/work/work');
-const Bridge  = require('./bridge');
+const fs = require('fs');
+const path = require('path');
+const io = require('socket.io-client');
+const Queue = require('@ntlab/work/queue');
+const Work = require('@ntlab/work/work');
+const Bridge = require('./bridge');
 const { Client, LocalAuth, MessageAck } = require('whatsapp-web.js');
 
 class ChatGateway extends Bridge {
@@ -36,7 +36,6 @@ class ChatGateway extends Bridge {
     queue = null
     notifyQueue = null
     notifyCmd = null
-    ready = false
 
     onInit() {
         this.queueFilename = path.join(this.getApp().queueDir, 'messages.json');
@@ -52,17 +51,13 @@ class ChatGateway extends Bridge {
 
     setupWAWeb(config) {
         if (config) {
-            const wa = new WAWeb(this);
-            wa.initialize(config);
-            this.consumers.push(wa);
+            this.createFactory({factory: WAWeb, config: config});
         }
     }
 
     setupSMSGateway(config) {
         if (config && config.url) {
-            const smsgw = new SMSGateway(this);
-            smsgw.initialize(config);
-            this.consumers.push(smsgw);
+            this.createFactory({factory: SMSGateway, config: config});
         }
     }
 
@@ -71,6 +66,11 @@ class ChatGateway extends Bridge {
             this.notifyCmd = this.getApp().getCmd(config, ['%CMD%', '%DATA%']);
             console.log('Text client using %s', this.notifyCmd.getId());
         }
+    }
+
+    createFactory(data) {
+        const factory = new ChatFactory(this, data);
+        return factory.create();
     }
 
     handleServer(con) {
@@ -100,10 +100,11 @@ class ChatGateway extends Bridge {
                     this.queue.next();
                 });
         }, () => {
-            if (!this.ready) {
+            let cnt = this.countReady();
+            if (cnt == 0) {
                 this.getApp().log('CGW: Not ready!');
             }
-            return this.ready;
+            return cnt > 0;
         });
     }
 
@@ -172,15 +173,18 @@ class ChatGateway extends Bridge {
         }
     }
 
-    onState(sender) {
+    countReady() {
         let cnt = 0;
         this.consumers.forEach(consumer => {
             if (consumer.isConnected()) {
                 cnt++;
             }
         });
-        this.ready = cnt > 0;
-        if (this.ready) {
+        return cnt;
+    }
+
+    onState(sender) {
+        if (this.countReady() > 0) {
             this.getApp().log('CGW: Ready for processing...');
             setTimeout(() => this.queue.next(), 5000);
         }
@@ -192,6 +196,45 @@ class ChatGateway extends Bridge {
 
     onReport(data) {
         this.addNotification('DELV', JSON.stringify(data));
+    }
+}
+
+class ChatFactory {
+
+    parent = null
+    factory = null
+    config = null
+    instance = null
+
+    constructor(parent, data) {
+        this.parent = parent;
+        this.factory = data.factory;
+        this.config = data.config;
+    }
+
+    create() {
+        if (this.instance == null) {
+            this.instance = new this.factory(this.parent);
+            if (!this.instance instanceof ChatConsumer) {
+                throw new Error(`${this.instance.constructor.name} must be a sub class of ChatConsumer.`);
+            }
+            this.instance.initialize(this.config);
+            if (this.config['restart-every']) {
+                setTimeout(() => {
+                    let idx = this.parent.consumers.indexOf(this.instance);
+                    if (idx >= 0) {
+                        this.parent.consumers.splice(idx);
+                        this.instance.close();
+                        this.instance = null;
+                        const delay = this.config['restart-delay'] || 60000;
+                        setTimeout(() => this.create(), delay);
+                        console.log('Restart for %s scheduled in %d s', this.factory.name, delay / 1000);
+                    }
+                }, this.config['restart-every']);
+            }
+            this.parent.consumers.push(this.instance);
+        }
+        return this.instance;
     }
 }
 
@@ -228,6 +271,9 @@ class ChatConsumer {
 
     canConsume(msg, retry) {
         return Promise.reject('Not handled!');
+    }
+
+    close() {
     }
 }
 
@@ -273,11 +319,14 @@ class WAWeb extends ChatConsumer {
             .on('ready', () => {
                 console.log('WhatsApp Web is ready...');
                 this.connected = true;
-                this.qrcount = 0
                 this.parent.onState(this);
+            })
+            .on('authenticated', () => {
+                console.log('WhatsApp Web is authenticated...');
             })
             .on('disconnected', () => {
                 this.connected = false;
+                this.qrcount = 0
                 this.parent.onState(this);
             })
             .on('message', msg => {
@@ -324,6 +373,33 @@ class WAWeb extends ChatConsumer {
         ;
     }
 
+    canConsume(msg, retry) {
+        const number = this.normalizeNumber(msg.address);
+        return new Promise((resolve, reject) => {
+            Work.works([
+                [w => Promise.resolve(this.isWANumber(number))],
+                [w => this.client.getNumberId(number), w => w.getRes(0)],
+                [w => this.client.sendMessage(w.getRes(1)._serialized, msg.data), w => w.getRes(0)],
+                [w => Promise.resolve(this.messages.push({data: msg, msg: w.getRes(2)})), w => w.getRes(0)],
+                [w => Promise.resolve(this.getDelay()), w => w.getRes(0)],
+                [w => this.sleep(w.getRes(4)), w => w.getRes(0) && w.getRes(4) > 0],
+                [w => Promise.resolve(w.getRes(2) ? true : false), w => w.getRes(0)],
+            ])
+            .then(res => resolve(res))
+            .catch(err => reject(err));
+        });
+    }
+
+    close() {
+        this.client.destroy();
+    }
+
+    sleep(ms) {
+        return new Promise((resolve, reject) => {
+            setTimeout(() => resolve(), ms);
+        });
+    }
+
     loadNumbers(force = false) {
         if (this.numbers == null || force) {
             if (fs.existsSync(this.waNumbersFile)) {
@@ -344,29 +420,6 @@ class WAWeb extends ChatConsumer {
         if (this.numbers) {
             fs.writeFileSync(this.waNumbersFile, JSON.stringify(this.numbers));
         }
-    }
-
-    canConsume(msg, retry) {
-        const number = this.normalizeNumber(msg.address);
-        return new Promise((resolve, reject) => {
-            Work.works([
-                [w => Promise.resolve(this.isWANumber(number))],
-                [w => this.client.getNumberId(number), w => w.getRes(0)],
-                [w => this.client.sendMessage(w.getRes(1)._serialized, msg.data), w => w.getRes(0)],
-                [w => Promise.resolve(this.messages.push({data: msg, msg: w.getRes(2)})), w => w.getRes(0)],
-                [w => Promise.resolve(this.getDelay()), w => w.getRes(0)],
-                [w => this.sleep(w.getRes(4)), w => w.getRes(0) && w.getRes(4) > 0],
-                [w => Promise.resolve(w.getRes(2) ? true : false), w => w.getRes(0)],
-            ])
-            .then(res => resolve(res))
-            .catch(err => reject(err));
-        });
-    }
-
-    sleep(ms) {
-        return new Promise((resolve, reject) => {
-            setTimeout(() => resolve(), ms);
-        });
     }
 
     isWANumber(number) {

@@ -22,10 +22,10 @@
  * SOFTWARE.
  */
 
-const fs    = require('fs');
-const path  = require('path');
-const cmd   = require('@ntlab/ntlib/cmd');
-const util  = require('@ntlab/ntlib/util');
+const fs = require('fs');
+const path = require('path');
+const cmd = require('@ntlab/ntlib/cmd');
+const util = require('@ntlab/ntlib/util');
 
 cmd.addVar('port', 'p', 'Specify server listen port, default is port 8080', 'port');
 cmd.addBool('secure', 's', 'Use HTTPS server');

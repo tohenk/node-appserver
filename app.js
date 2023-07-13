@@ -28,9 +28,8 @@ global.ENV_CONFIG = 'NT_APP_CONFIG';
 
 // === module dependencies ===
 
-const
-    path        = require('path'),
-    cmd         = require('@ntlab/ntlib/cmd');
+const path = require('path');
+const cmd = require('@ntlab/ntlib/cmd');
     
 // === command line setup ===
 
@@ -39,15 +38,14 @@ cmd.addVar('type', 't', 'Server type: socket or xmpp', 'server-type', 'socket');
 cmd.addVar('config', 'c', 'Read app configuration from file', 'config-file');
 cmd.addVar('logdir', 'l', 'Set the log file location', 'directory');
 
-// === include app handler ===
-
-const
-    socketsvr   = require('./server/socket'),
-    xmppsvr     = require('./server/xmpp');
-
 if (!cmd.parse() || (cmd.get('help') && usage())) {
     process.exit();
 }
+
+// === include app handler ===
+
+const socketsvr = require('./server/socket');
+const xmppsvr = require('./server/xmpp');
 
 // === run the app ===
 

@@ -22,9 +22,9 @@
  * SOFTWARE.
  */
 
-const path    = require('path');
-const util    = require('@ntlab/ntlib/util');
-const Logger  = require('@ntlab/ntlib/logger');
+const path = require('path');
+const util = require('@ntlab/ntlib/util');
+const Logger = require('@ntlab/ntlib/logger');
 
 class ReportServer {
 

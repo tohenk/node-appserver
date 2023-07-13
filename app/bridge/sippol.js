@@ -22,8 +22,8 @@
  * SOFTWARE.
  */
 
-const io      = require('socket.io-client');
-const Bridge  = require('./bridge');
+const io = require('socket.io-client');
+const Bridge = require('./bridge');
 
 class Sippol extends Bridge {
 

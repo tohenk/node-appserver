@@ -54,6 +54,13 @@ class Sipd extends Bridge {
                         con.emit('sipd-status', status);
                     });
                 })
+                .on('logs', data => {
+                    this.clients.forEach(con => {
+                        if (data.ref === con.id && data.logs) {
+                            con.emit('sipd-logs', data.logs);
+                        }
+                    });
+                })
             ;
         }
     }
@@ -70,6 +77,11 @@ class Sipd extends Bridge {
                 .on('sipd-status', () => {
                     if (this.clients.indexOf(con) >= 0) {
                         this.sipd.emit('status');
+                    }
+                })
+                .on('sipd-logs', () => {
+                    if (this.clients.indexOf(con) >= 0) {
+                        this.sipd.emit('logs', {id: con.id});
                     }
                 })
             ;

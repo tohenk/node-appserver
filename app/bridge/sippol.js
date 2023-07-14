@@ -54,6 +54,13 @@ class Sippol extends Bridge {
                         con.emit('sippol-status', status);
                     });
                 })
+                .on('logs', data => {
+                    this.clients.forEach(con => {
+                        if (data.ref === con.id && data.logs) {
+                            con.emit('sippol-logs', data.logs);
+                        }
+                    });
+                })
             ;
         }
     }
@@ -70,6 +77,11 @@ class Sippol extends Bridge {
                 .on('sippol-status', () => {
                     if (this.clients.indexOf(con) >= 0) {
                         this.sippol.emit('status');
+                    }
+                })
+                .on('sippol-logs', () => {
+                    if (this.clients.indexOf(con) >= 0) {
+                        this.sippol.emit('logs', {id: con.id});
                     }
                 })
             ;

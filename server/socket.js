@@ -212,11 +212,11 @@ class AppServer {
             console.log('Running %d applications(s)', cnt);
             console.log('');
         }
-        process.on('exit', (code) => {
+        process.on('exit', code => {
             this.notifyAppClose();
         });
         process.on('SIGTERM', () => {
-            this.notifyAppClose();
+            process.exit();
         });
         process.on('SIGINT', () => {
             process.exit();

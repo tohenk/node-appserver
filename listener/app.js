@@ -22,10 +22,8 @@
  * SOFTWARE.
  */
 
-const fs = require('fs');
 const path = require('path');
 const Cmd = require('@ntlab/ntlib/cmd');
-const util = require('@ntlab/ntlib/util');
 
 Cmd.addBool('help', 'h', 'Show program usage').setAccessible(false);
 Cmd.addVar('config', '', 'Read app configuration from file', 'config-file');
@@ -33,6 +31,9 @@ Cmd.addVar('config', '', 'Read app configuration from file', 'config-file');
 if (!Cmd.parse() || (Cmd.get('help') && usage())) {
     process.exit();
 }
+
+const fs = require('fs');
+const util = require('@ntlab/ntlib/util');
 
 class App {
 

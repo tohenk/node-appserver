@@ -38,7 +38,6 @@ const util = require('@ntlab/ntlib/util');
 class App {
 
     config = {}
-    cmds = {}
 
     constructor() {
         this.initialize();
@@ -62,15 +61,15 @@ class App {
     }
 
     check() {
-        if (this.config.url == undefined) {
+        if (this.config.url === undefined) {
             console.log('No url in configuration, aborting!');
             return;
         }
-        if (this.config.secret == undefined) {
+        if (this.config.secret === undefined) {
             console.log('No secret in configuration, aborting!');
             return;
         }
-        if (typeof(this.config.listens) != 'object') {
+        if (typeof this.config.listens !== 'object') {
             console.log('No listens in configuration, aborting!');
             return;
         }
@@ -89,30 +88,30 @@ class App {
         });
     }
 
-    execCmd(cmd, values) {
+    execCmd(name, cmd, values) {
         return new Promise((resolve, reject) => {
             const p = cmd.exec(values);
             p.on('message', data => {
-                console.log('Message from process: %s', JSON.stringify(data));
+                console.log(`${name}: %s`, JSON.stringify(data));
             });
             p.on('exit', code => {
-                console.log('CLI: Result %s...', code);
+                console.log(`${name}: Exit code %s...`, code);
                 resolve(code);
             });
             p.on('error', err => {
-                console.log('ERR: %s...', err);
+                console.log(`${name}: ERR: %s...`, err);
                 reject(err);
             });
             p.stdout.on('data', line => {
                 const lines = util.cleanBuffer(line).split('\n');
                 for (let i = 0; i < lines.length; i++) {
-                    console.log('CLI: %s', lines[i]);
+                    console.log(`${name}: 1> %s`, lines[i]);
                 }
             });
             p.stderr.on('data', line => {
                 const lines = util.cleanBuffer(line).split('\n');
                 for (let i = 0; i < lines.length; i++) {
-                    console.log('CLI: %s', lines[i]);
+                    console.log(`${name}: 2> %s`, lines[i]);
                 }
             });
         });
@@ -123,39 +122,64 @@ class App {
         this.server = net.createServer().listen();
     }
 
-    createCommand() {
-        for (let key in this.config.listens) {
-            this.cmds[key] = this.getCmd(this.config.listens[key], ['%DATA%']);
-        }
-    }
-
-    createListener() {
+    createListener(group = null) {
         const io = require('socket.io-client');
-        this.listener = io(this.config.url);
-        this.listener
+        const listener = {
+            io: io(this.config.url),
+            cmds: {},
+        }
+        for (const key in this.config.listens) {
+            const cfg = this.config.listens[key];
+            if ((group && cfg.group !== group) || (!group && cfg.group)) {
+                continue;
+            }
+            const event = cfg.type ? cfg.type : key;
+            listener.cmds[event] = this.getCmd(cfg, ['%DATA%']);
+        }
+        const name = group ? group : 'world';
+        listener.io
             .on('connect', () => {
-                console.log('Connected to %s', this.config.url);
-                this.listener.emit('register', {xid: this.config.secret});
+                console.log(`${name}: Connected to %s`, this.config.url);
+                const xid = {xid: this.config.secret};
+                if (group) {
+                    xid.group = group;
+                }
+                listener.io.emit('register', xid);
             })
             .on('disconnect', () => {
-                console.log('Disconnected from %s', this.config.url);
+                console.log(`${name}: Disconnected from %s`, this.config.url);
             })
             .on('data', data => {
                 const event = data.id;
                 const payload = data.params;
-                if (this.cmds[event]) {
-                    console.log('Handling event %s', event);
-                    this.execCmd(this.cmds[event], {DATA: JSON.stringify(payload)});
+                if (listener.cmds[event]) {
+                    console.log(`${name}: Event %s`, event);
+                    this.execCmd(event, listener.cmds[event], {DATA: JSON.stringify(payload)});
                 }
             })
         ;
+        return listener;
+    }
+
+    createListeners() {
+        const groups = [];
+        Object.values(this.config.listens).forEach(cfg => {
+            const group = cfg.group || null;
+            if (groups.indexOf(group) < 0) {
+                groups.push(group);
+            }
+        });
+        if (groups.length) {
+            for (const group of groups) {
+                this.createListener(group);
+            }
+        }
     }
 
     run() {
         if (this.check()) {
             this.createServer();
-            this.createCommand();
-            this.createListener();
+            this.createListeners();
             console.log('Listening for %s, press Ctrl + C to stop...', this.config.url);
         }
     }

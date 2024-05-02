@@ -27,6 +27,7 @@ const path = require('path');
 const util = require('@ntlab/ntlib/util');
 const Logger = require('@ntlab/ntlib/logger');
 const Bridge = require('./bridge/bridge');
+const Queue = require('@ntlab/work/queue');
 
 const Connections = {};
 
@@ -44,6 +45,7 @@ class MessagingServer {
     serverRoom = 'server'
     listenerRoom = 'listener'
     bridges = []
+    cmds = {}
 
     constructor(appserver, factory, config, options) {
         this.appserver = appserver;
@@ -54,13 +56,13 @@ class MessagingServer {
     }
 
     init() {
-        if (this.appserver.id == 'socket.io') {
-            if (this.config.key == undefined) {
+        if (this.appserver.id === 'socket.io') {
+            if (this.config.key === undefined) {
                 throw new Error('Server key not defined!');
             }
             this.serverKey = this.config.key;
         }
-        if (this.config.timeout != undefined) {
+        if (this.config.timeout !== undefined) {
             this.registerTimeout = this.config.timeout;
         }
         this.queueDir = path.join(path.dirname(this.appserver.config), 'queue');
@@ -109,84 +111,101 @@ class MessagingServer {
         });
     }
 
-    execCmd(cmd, values) {
+    execCmd(name, cmd, values) {
         return new Promise((resolve, reject) => {
             const p = cmd.exec(values);
             p.on('message', data => {
-                console.log('Message from process: %s', JSON.stringify(data));
+                console.log(`${name}: %s`, JSON.stringify(data));
             });
             p.on('exit', code => {
-                this.log('CLI: Result %s...', code);
+                this.log(`${name}: Exit code %s...`, code);
                 resolve(code);
             });
             p.on('error', err => {
-                this.log('ERR: %s...', err);
+                this.log(`${name}: ERR: %s...`, err);
                 reject(err);
             });
             p.stdout.on('data', line => {
                 const lines = util.cleanBuffer(line).split('\n');
                 for (let i = 0; i < lines.length; i++) {
-                    this.log('CLI: %s', lines[i]);
+                    this.log(`${name}: 1> %s`, lines[i]);
                 }
             });
             p.stderr.on('data', line => {
                 const lines = util.cleanBuffer(line).split('\n');
                 for (let i = 0; i < lines.length; i++) {
-                    this.log('CLI: %s', lines[i]);
+                    this.log(`${name}: 2> %s`, lines[i]);
                 }
             });
         });
     }
 
-    deliverEmail(hash, attr) {
-        if (this.config['email-sender'] != undefined) {
-            if (!this.emailcmd) {
-                this.emailcmd = this.getCmd(this.config['email-sender'], ['%HASH%']);
+    doCmd(group, name, args, data) {
+        if (this.cmds[name] === undefined) {
+            this.cmds[name] = [];
+            if (this.config[name] !== undefined) {
+                const cmd = {cmd: this.getCmd(this.config[name], args)};
+                if (this.config[name].group) {
+                    cmd.group = this.config[name].group;
+                }
+                this.cmds[name].push(cmd);
+            } else {
+                Object.values(this.config).forEach(cfg => {
+                    if (cfg.type === name) {
+                        const cmd = {cmd: this.getCmd(cfg, args)};
+                        if (cfg.group) {
+                            cmd.group = cfg.group;
+                        }
+                        this.cmds[name].push(cmd);
+                    }
+                });
             }
         }
-        if (this.emailcmd) {
-            const params = {HASH: hash};
-            if (attr != undefined) {
-                params.ATTR = attr;
-            }
-            return this.execCmd(this.emailcmd, params);
-        } else {
-            return Promise.resolve();
+        if (this.cmds[name].length) {
+            return new Promise((resolve, reject) => {
+                const q = new Queue(...this.cmds[name], cmd => {
+                    if ((group && cmd.group !== group) || (!group && cmd.group)) {
+                        q.next();
+                    } else {
+                        this.execCmd(name, cmd.cmd, data)
+                            .then(() => q.next)
+                            .catch(err => reject(err));
+                    }
+                });
+                q.once('done', () => resolve());
+            });
         }
+        return Promise.resolve();
     }
 
-    deliverData(id, params) {
-        const cmdid = id + 'cmd';
-        if (this.config[id] != undefined) {
-            if (!this[cmdid]) {
-                this[cmdid] = this.getCmd(this.config[id], ['%DATA%']);
-            }
+    deliverEmail(group, hash, attr) {
+        const data = {HASH: hash};
+        if (attr !== undefined) {
+            data.ATTR = attr;
         }
-        if (this[cmdid]) {
-            return this.execCmd(this[cmdid], {DATA: JSON.stringify(params)});
-        } else {
-            return Promise.resolve();
-        }
+        return this.doCmd(group, 'email-sender', ['%HASH%'], data);
     }
 
-    notifySignin(action, data) {
-        if (this.config['user-notifier'] != undefined) {
-            if (!this.signincmd) {
-                this.signincmd = this.getCmd(this.config['user-notifier'], ['%ACTION%', '%DATA%']);
-            }
-        }
-        if (this.signincmd) {
-            return this.execCmd(this.signincmd, {ACTION: action, DATA: JSON.stringify(data)});
-        } else {
-            return Promise.resolve();
-        }
+    deliverData(group, id, params) {
+        return this.doCmd(group, id, ['%DATA%'], {DATA: JSON.stringify(params)});
     }
 
-    getUsers() {
+    notifySignin(group, action, data) {
+        return this.doCmd(group, 'user-notifier', ['%ACTION%', '%DATA%'], {ACTION: action, DATA: JSON.stringify(data)});
+    }
+
+    getRoom(room, group) {
+        return group ? [group, room].join('-') : room;
+    }
+
+    getUsers(group = null) {
         const users = [];
         const uids = [];
-        for (let id in Connections) {
-            if (Connections[id].type == CON_CLIENT) {
+        for (const id in Connections) {
+            if (Connections[id].type === CON_CLIENT) {
+                if (group && Connections[id].group !== group) {
+                    continue;
+                }
                 if (uids.indexOf(Connections[id].uid) < 0) {
                     users.push({uid: Connections[id].uid, time: Connections[id].time});
                     uids.push(Connections[id].uid);
@@ -206,21 +225,26 @@ class MessagingServer {
 
     removeCon(con) {
         if (Connections[con.id]) {
-            const data = Connections[con.id];
-            switch (data.type) {
+            const info = Connections[con.id];
+            switch (info.type) {
                 case CON_SERVER:
-                    con.leave(this.serverRoom);
+                    con.leave(this.getRoom(this.serverRoom, info.group));
                     this.log('SVR: %s: Disconnected...', con.id);
                     break;
                 case CON_LISTENER:
-                    con.leave(this.listenerRoom);
+                    con.leave(this.getRoom(this.listenerRoom, info.group));
                     this.log('LST: %s: Disconnected...', con.id);
                     break;
                 case CON_CLIENT:
-                    con.leave(data.uid);
+                    con.leave(this.getRoom(info.uid, info.group));
                     // notify other users someone is offline
-                    this.con.emit('user-offline', data.uid);
-                    this.log('USR: %s: %s disconnected...', con.id, data.uid);
+                    if (info.group) {
+                        con.leave(this.getRoom(info.group));
+                        this.con.to(info.group).emit('user-offline', info.uid);
+                    } else {
+                        this.con.emit('user-offline', info.uid);
+                    }
+                    this.log('USR: %s: %s disconnected...', con.id, info.uid);
                     break;
             }
             delete Connections[con.id];
@@ -228,9 +252,10 @@ class MessagingServer {
     }
 
     handleServerCon(con) {
+        const info = Connections[con.id];
         con.on('whos-online', () => {
             this.log('SVR: %s: Query whos-online...', con.id);
-            const users = this.getUsers();
+            const users = this.getUsers(info.group);
             con.emit('whos-online', users);
             for (let i = 0; i < users.length; i++) {
                 this.log('SVR: %s: User: %s, time: %d', con.id, users[i].uid, users[i].time);
@@ -241,42 +266,50 @@ class MessagingServer {
             const notif = {
                 message: data.message
             }
-            if (data.code) notif.code = data.code;
-            if (data.referer) notif.referer = data.referer;
-            this.con.to(data.uid).emit('notification', notif);
+            if (data.code) {
+                notif.code = data.code;
+            }
+            if (data.referer) {
+                notif.referer = data.referer;
+            }
+            this.con.to(this.getRoom(data.uid, info.group)).emit('notification', notif);
         });
         con.on('push-notification', data => {
             this.log('SVR: %s: Push notification: %s...', con.id, JSON.stringify(data));
-            if (data.name != undefined) {
-                this.con.emit(data.name, data.data != undefined ? data.data : {});
+            if (data.name !== undefined) {
+                if (info.group) {
+                    this.con.to(info.group).emit(data.name, data.data != undefined ? data.data : {});
+                } else {
+                    this.con.emit(data.name, data.data != undefined ? data.data : {});
+                }
             }
         });
         con.on('message', data => {
             this.log('SVR: %s: New message for %s...', con.id, data.uid);
-            this.con.to(data.uid).emit('message');
+            this.con.to(this.getRoom(data.uid, info.group)).emit('message');
         });
         con.on('deliver-email', data => {
             this.log('SVR: %s: Deliver email %s...', con.id, data.hash);
             if (data.attr) {
-                this.deliverEmail(data.hash, data.attr);
+                this.deliverEmail(info.group, data.hash, data.attr);
             } else {
-                this.deliverEmail(data.hash);
+                this.deliverEmail(info.group, data.hash);
             }
         });
         con.on('user-signin', data => {
             this.log('SVR: %s: User signin %s...', con.id, data.username);
-            this.notifySignin('SIGNIN', data);
+            this.notifySignin(info.group, 'SIGNIN', data);
         });
         con.on('user-signout', data => {
             this.log('SVR: %s: User signout %s...', con.id, data.username);
-            this.notifySignin('SIGNOUT', data);
+            this.notifySignin(info.group, 'SIGNOUT', data);
         });
         con.on('data', data => {
             this.log('SVR: %s: Receiving data %s...', con.id, JSON.stringify(data));
             if (data.id && data.params) {
-                this.deliverData(data.id, data.params);
+                this.deliverData(info.group, data.id, data.params);
             }
-            this.con.to(this.listenerRoom).emit('data', data);
+            this.con.to(this.getRoom(this.listenerRoom, info.group)).emit('data', data);
         });
         // handle bridges server connection
         this.bridges.forEach(bridge => {
@@ -285,14 +318,15 @@ class MessagingServer {
     }
 
     handleClientCon(con) {
+        const info = Connections[con.id];
         con.on('notification-read', data => {
             if (data.uid) {
-                this.con.to(data.uid).emit('notification-read', data);
+                this.con.to(this.getRoom(data.uid, info.group)).emit('notification-read', data);
             }
         });
         con.on('message-sent', data => {
             if (data.uid) {
-                this.con.to(data.uid).emit('message-sent', data);
+                this.con.to(this.getRoom(data.uid, info.group)).emit('message-sent', data);
             }
         });
         // handle bridges client connection
@@ -312,7 +346,6 @@ class MessagingServer {
             if (data.sid) {
                 info = this.regCon(con, data, CON_SERVER, 'sid', this.serverRoom, true);
                 if (info) {
-                    this.handleServerCon(con);
                     this.log('SVR: %s: Connected...', con.id);
                 } else {
                     this.log('SVR: %s: Didn\'t send correct key...', con.id);
@@ -326,17 +359,31 @@ class MessagingServer {
                 }
             } else if (data.uid) {
                 info = this.regCon(con, data, CON_CLIENT, 'uid');
-                con.join(data.uid);
-                this.handleClientCon(con);
+                con.join(this.getRoom(data.uid, info.group));
+                if (info.group) {
+                    con.join(info.group);
+                }
                 // notify other users someone is online
-                this.con.emit('user-online', data.uid);
+                if (info.group) {
+                    this.con.to(info.group).emit('user-online', data.uid);
+                } else {
+                    this.con.emit('user-online', data.uid);
+                }
                 this.log('USR: %s: %s connected...', con.id, data.uid);
             } else {
                 this.log('ERR: %s: Invalid registration...', con.id);
             }
             if (info) {
-                this.addCon(con, info);
                 clearTimeout(t);
+                this.addCon(con, info);
+                switch (info.type) {
+                    case CON_SERVER:
+                        this.handleServerCon(con);
+                        break;
+                    case CON_CLIENT:
+                        this.handleClientCon(con);
+                        break;
+                }
             } else {
                 con.disconnect(true);
                 this.log('ERR: %s: Forced disconnect...', con.id);
@@ -352,21 +399,24 @@ class MessagingServer {
 
     regCon(con, data, type, key, room, authenticate) {
         const info = {};
-        if (authenticate && data[key] != this.serverKey) {
+        if (authenticate && data[key] !== this.serverKey) {
             return;
         }
         info.type = type;
         info[key] = data[key];
+        if (data.group) {
+            info.group = data.group;
+        }
         if (room) {
-            con.join(room);
+            con.join(this.getRoom(room, data.group));
         } else {
-            con.join(data[key]);
+            con.join(this.getRoom(data[key], data.group));
         }
         return info;
     }
 
     listen(con) {
-        if (this.appserver.id == 'socket.io') {
+        if (this.appserver.id === 'socket.io') {
             con.on('connection', client => {
                 this.setupCon(client);
             });

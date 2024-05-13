@@ -149,6 +149,7 @@ class MessagingServer {
                     cmd.group = this.config[name].group;
                 }
                 this.cmds[name].push(cmd);
+                console.log('Handle %s using %s...', name, cmd.cmd.bin ? cmd.cmd.bin : cmd.cmd.url);
             } else {
                 Object.values(this.config).forEach(cfg => {
                     if (cfg.type === name) {
@@ -157,25 +158,25 @@ class MessagingServer {
                             cmd.group = cfg.group;
                         }
                         this.cmds[name].push(cmd);
+                        console.log('Handle %s using %s...', name, cmd.cmd.bin ? cmd.cmd.bin : cmd.cmd.url);
                     }
                 });
             }
         }
         if (this.cmds[name].length) {
-            return new Promise((resolve, reject) => {
-                const q = new Queue(...this.cmds[name], cmd => {
-                    if ((group && cmd.group !== group) || (!group && cmd.group)) {
-                        q.next();
-                    } else {
-                        this.execCmd(name, cmd.cmd, data)
-                            .then(() => q.next)
-                            .catch(err => reject(err));
-                    }
-                });
-                q.once('done', () => resolve());
+            const q = new Queue([...this.cmds[name]], cmd => {
+                if ((group && cmd.group !== group) || (!group && cmd.group)) {
+                    console.log('Skipping command %s', cmd.cmd.bin ? cmd.cmd.bin : cmd.cmd.url);
+                    q.next();
+                } else {
+                    console.log('Executing command %s with %s', cmd.cmd.bin ? cmd.cmd.bin : cmd.cmd.url, data);
+                    this.execCmd(name, cmd.cmd, data)
+                        .then(() => q.next)
+                        .catch(err => console.error(err));
+                }
             });
+            return true;
         }
-        return Promise.resolve();
     }
 
     deliverEmail(group, hash, attr) {

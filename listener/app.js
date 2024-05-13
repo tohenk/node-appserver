@@ -154,7 +154,8 @@ class App {
                 const payload = data.params;
                 if (listener.cmds[event]) {
                     console.log(`${name}: Event %s`, event);
-                    this.execCmd(event, listener.cmds[event], {DATA: JSON.stringify(payload)});
+                    this.execCmd(event, listener.cmds[event], {DATA: JSON.stringify(payload)})
+                        .catch(err => console.error(`${name}: %s`, err));
                 }
             })
         ;

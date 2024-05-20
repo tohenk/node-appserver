@@ -166,10 +166,8 @@ class MessagingServer {
         if (this.cmds[name].length) {
             const q = new Queue([...this.cmds[name]], cmd => {
                 if ((group && cmd.group !== group) || (!group && cmd.group)) {
-                    console.log('Skipping command %s', cmd.cmd.bin ? cmd.cmd.bin : cmd.cmd.url);
                     q.next();
                 } else {
-                    console.log('Executing command %s with %s', cmd.cmd.bin ? cmd.cmd.bin : cmd.cmd.url, data);
                     this.execCmd(name, cmd.cmd, data)
                         .then(() => q.next)
                         .catch(err => console.error(err));

@@ -41,12 +41,12 @@ class Sipd extends Bridge {
             this.sipd = io(config.url);
             this.sipd
                 .on('connect', () => {
-                    console.log('Connected to SIPD Bridge at %s', config.url);
+                    console.log('SIPD: Connected to %s', config.url);
                     this.sipd.emit('notify');
                     this.connected = true;
                 })
                 .on('disconnect', () => {
-                    console.log('Disconnected from SIPD Bridge at %s', config.url);
+                    console.log('SIPD: Disconnected from %s', config.url);
                     this.connected = false;
                 })
                 .on('status', status => {

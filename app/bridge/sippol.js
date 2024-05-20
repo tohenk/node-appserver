@@ -41,12 +41,12 @@ class Sippol extends Bridge {
             this.sippol = io(config.url);
             this.sippol
                 .on('connect', () => {
-                    console.log('Connected to SIPPOL Bridge at %s', config.url);
+                    console.log('SIPPOL: Connected to %s', config.url);
                     this.sippol.emit('notify');
                     this.connected = true;
                 })
                 .on('disconnect', () => {
-                    console.log('Disconnected from SIPPOL Bridge at %s', config.url);
+                    console.log('SIPPOL: Disconnected from %s', config.url);
                     this.connected = false;
                 })
                 .on('status', status => {

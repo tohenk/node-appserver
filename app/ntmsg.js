@@ -140,7 +140,7 @@ class MessagingServer {
         });
     }
 
-    doCmd(group, name, args, data) {
+    doCmd(group, name, args, data, callback = null) {
         if (this.cmds[name] === undefined) {
             this.cmds[name] = [];
             if (this.config[name] !== undefined) {
@@ -170,10 +170,22 @@ class MessagingServer {
                 } else {
                     this.execCmd(name, cmd.cmd, data)
                         .then(() => q.next)
-                        .catch(err => console.error(err));
+                        .catch(err => {
+                            console.error(err);
+                            if (typeof callback === 'function') {
+                                callback(err);
+                            }
+                        });
                 }
             });
+            if (typeof callback === 'function') {
+                q.once('done', () => callback(true));
+            }
             return true;
+        } else {
+            if (typeof callback === 'function') {
+                callback();
+            }
         }
     }
 

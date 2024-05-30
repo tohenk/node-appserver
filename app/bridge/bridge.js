@@ -22,9 +22,13 @@
  * SOFTWARE.
  */
 
+const MessagingServer = require('../ntmsg');
+
 class MessagingBridge {
 
+    /** @type {MessagingServer} */
     app = null
+    /** @type {object} */
     config = {}
 
     constructor(app) {
@@ -33,13 +37,13 @@ class MessagingBridge {
 
     initialize(config) {
         this.config = config;
-        if (typeof this.onInit == 'function') {
+        if (typeof this.onInit === 'function') {
             this.onInit();
         }
     }
 
     finalize() {
-        if (typeof this.onFinalize == 'function') {
+        if (typeof this.onFinalize === 'function') {
             this.onFinalize();
         }
     }

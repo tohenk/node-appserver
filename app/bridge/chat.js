@@ -32,17 +32,18 @@ const { Client, LocalAuth, MessageAck } = require('whatsapp-web.js');
 
 class ChatGateway extends Bridge {
 
+    /** @type {ChatConsumer[]} */
     consumers = []
+    /** @type {Queue} */
     queue = null
+    /** @type {Queue} */
     notifyQueue = null
-    notifyCmd = null
 
     onInit() {
         this.queueFilename = path.join(this.getApp().queueDir, 'messages.json');
         this.createQueue();
         this.setupWAWeb(this.getConfig('whatsapp'));
         this.setupSMSGateway(this.getConfig('smsgw'));
-        this.setupSMSNotifier(this.getConfig('text-client'));
     }
 
     onFinalize() {
@@ -58,13 +59,6 @@ class ChatGateway extends Bridge {
     setupSMSGateway(config) {
         if (config && config.url) {
             this.createFactory({factory: SMSGateway, config: config});
-        }
-    }
-
-    setupSMSNotifier(config) {
-        if (config) {
-            this.notifyCmd = this.getApp().getCmd(config, ['%CMD%', '%DATA%']);
-            console.log('Text client using %s', this.notifyCmd.getId());
         }
     }
 
@@ -100,8 +94,8 @@ class ChatGateway extends Bridge {
                     this.queue.next();
                 });
         }, () => {
-            let cnt = this.countReady();
-            if (cnt == 0) {
+            const cnt = this.countReady();
+            if (cnt === 0) {
                 this.getApp().log('CGW: Not ready!');
             }
             return cnt > 0;
@@ -160,13 +154,9 @@ class ChatGateway extends Bridge {
         const queue = {CMD: cmd, DATA: data};
         if (!this.notifyQueue) {
             this.notifyQueue = new Queue([queue], q => {
-                if (this.notifyCmd) {
-                    this.getApp().execCmd(this.notifyCmd, q)
-                        .then(() => {
-                            this.notifyQueue.next();
-                        })
-                    ;
-                }
+                this.getApp().doCmd(null, 'text-client', ['%CMD%', '%DATA%'], q, () => {
+                    this.notifyQueue.next();
+                });
             });
         } else {
             this.notifyQueue.requeue([queue]);
@@ -201,9 +191,13 @@ class ChatGateway extends Bridge {
 
 class ChatFactory {
 
+    /** @type {ChatGateway} */
     parent = null
+    /** @type {ChatConsumer} */
     factory = null
+    /** @type {object} */
     config = null
+    /** @type {ChatConsumer} */
     instance = null
 
     constructor(parent, data) {
@@ -240,8 +234,11 @@ class ChatFactory {
 
 class ChatConsumer {
 
+    /** @type {string} */
     id = null
+    /** @type {ChatGateway} */
     parent = null
+    /** @type {string} */
     connected = false
 
     constructor(parent) {

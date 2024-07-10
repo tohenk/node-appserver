@@ -54,6 +54,14 @@ class Sipd extends Bridge {
                         con.emit('sipd-status', status);
                     });
                 })
+                .on('captcha', data => {
+                    this.clients.forEach(con => {
+                        if (data.ref === con.id) {
+                            delete data.ref;
+                            con.emit('sipd-captcha', data);
+                        }
+                    });
+                })
                 .on('logs', data => {
                     this.clients.forEach(con => {
                         if (data.ref === con.id && data.logs) {
@@ -77,6 +85,11 @@ class Sipd extends Bridge {
                 .on('sipd-status', () => {
                     if (this.clients.indexOf(con) >= 0) {
                         this.sipd.emit('status');
+                    }
+                })
+                .on('sipd-captcha', data => {
+                    if (this.clients.indexOf(con) >= 0) {
+                        this.sipd.emit('captcha', Object.assign({id: con.id}, data));
                     }
                 })
                 .on('sipd-logs', () => {

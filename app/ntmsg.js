@@ -115,7 +115,7 @@ class MessagingServer {
         return new Promise((resolve, reject) => {
             const p = cmd.exec(values);
             p.on('message', data => {
-                console.log(`${name}: %s`, JSON.stringify(data));
+                console.log(`${name}: %s`, data);
             });
             p.on('exit', code => {
                 this.log(`${name}: Exit code %s...`, code);

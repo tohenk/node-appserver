@@ -48,7 +48,7 @@ class ReportServer {
             console.log('Using command %s...', cmd.getId());
         }
         const con = this.factory();
-        if (this.appserver.id == 'socket.io') {
+        if (this.appserver.id === 'socket.io') {
             con.on('connection', client => {
                 this.handleCon(client);
             });
@@ -70,10 +70,12 @@ class ReportServer {
     handleCon(con, cmd) {
         con.on('report', data => {
             this.log('%s: Generating report %s...', con.id, data.hash);
-            if (cmd == undefined && data.namespace) {
+            if (cmd === undefined && data.namespace) {
                 cmd = this.handlers[data.namespace];
             }
-            if (cmd == undefined) return;
+            if (cmd === undefined) {
+                return;
+            }
             const params = {REPORTID: data.hash};
             if (data.data) {
                 params.DATA = JSON.stringify(data.data);

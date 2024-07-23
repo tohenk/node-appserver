@@ -3,7 +3,7 @@
     "version": "1.0.0",
     "private": true,
     "dependencies": {
-        "@ntlab/ntlib": "^2.0.5",
+        "@ntlab/ntlib": "^2.1.2",
         "socket.io-client": "^4.7.5"
     }
 }

@@ -477,7 +477,7 @@ class SMSGateway extends ChatConsumer {
         this.id = 'sms';
         if (config.url) {
             console.log('SMS Gateway at %s', config.url);
-            this.io = io(config.url);
+            this.io = io(config.url, config.options || {});
             this.io
                 .on('connect', () => {
                     console.log('Connected to SMS Gateway at %s', config.url);

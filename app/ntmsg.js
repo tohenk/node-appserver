@@ -169,7 +169,7 @@ class MessagingServer {
                     q.next();
                 } else {
                     this.execCmd(name, cmd.cmd, data)
-                        .then(() => q.next)
+                        .then(() => q.next())
                         .catch(err => {
                             console.error(err);
                             if (typeof callback === 'function') {

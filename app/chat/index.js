@@ -1,0 +1,172 @@
+/**
+ * The MIT License (MIT)
+ *
+ * Copyright (c) 2020-2024 Toha <tohenk@yahoo.com>
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+ * of the Software, and to permit persons to whom the Software is furnished to do
+ * so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
+const ChatGateway = require('../bridge/chat');
+
+/**
+ * Chat factory.
+ *
+ * @author Toha <tohenk@yahoo.com>
+ */
+class ChatFactory {
+
+    /** @type {ChatGateway} */
+    parent = null
+    /** @type {ChatConsumer} */
+    factory = null
+    /** @type {object} */
+    config = null
+    /** @type {ChatConsumer} */
+    instance = null
+
+    /**
+     * Constructor.
+     *
+     * @param {ChatGateway} parent The owner
+     * @param {object} data Factory data
+     */
+    constructor(parent, data) {
+        this.parent = parent;
+        this.factory = data.factory;
+        this.config = data.config;
+    }
+
+    /**
+     * Create an instance.
+     *
+     * @returns {ChatConsumer}
+     */
+    create() {
+        if (this.instance === null) {
+            this.instance = new this.factory(this.parent);
+            if (!this.instance instanceof ChatConsumer) {
+                throw new Error(`${this.instance.constructor.name} must be a sub class of ChatConsumer.`);
+            }
+            this.instance.initialize(this.config);
+            if (this.config['restart-every']) {
+                setTimeout(() => {
+                    let idx = this.parent.consumers.indexOf(this.instance);
+                    if (idx >= 0) {
+                        this.parent.consumers.splice(idx);
+                        this.instance.close();
+                        this.instance = null;
+                        const delay = this.config['restart-delay'] || 60000;
+                        setTimeout(() => this.create(), delay);
+                        console.log('Restart for %s scheduled in %d s', this.factory.name, delay / 1000);
+                    }
+                }, this.config['restart-every']);
+            }
+            this.parent.consumers.push(this.instance);
+        }
+        return this.instance;
+    }
+}
+
+/**
+ * Chat consumer.
+ *
+ * @author Toha <tohenk@yahoo.com>
+ */
+class ChatConsumer {
+
+    /** @type {string} */
+    id = null
+    /** @type {ChatGateway} */
+    parent = null
+    /** @type {string} */
+    connected = false
+
+    /**
+     * Constructor.
+     *
+     * @param {ChatGateway} parent The owner
+     */
+    constructor(parent) {
+        this.parent = parent;
+    }
+
+    /**
+     * Initialize consumer.
+     *
+     * @param {object} config Configuration
+     */
+    initialize(config) {
+    }
+
+    /**
+     * Get consumer id.
+     *
+     * @returns {string}
+     */
+    getId() {
+        return this.id;
+    }
+
+    /**
+     * Is consumer connected?
+     *
+     * @returns {boolean}
+     */
+    isConnected() {
+        return this.connected;
+    }
+
+    /**
+     * Is consumer can handle the message?
+     *
+     * @param {object} msg Message
+     * @returns {boolean}
+     */
+    canHandle(msg) {
+        if (this.isConnected()) {
+            if (msg.consumer) {
+                return msg.consumer === this.id;
+            }
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Consume message.
+     *
+     * @param {object} msg Message
+     * @param {boolean} retry Wheter a new message or a retry for previous one
+     * @returns {Promise<boolean>}
+     */
+    canConsume(msg, retry) {
+        return Promise.reject('Not handled!');
+    }
+
+    /**
+     * End consumer session.
+     */
+    close() {
+    }
+}
+
+module.exports = {
+    ChatFactory,
+    ChatConsumer
+}

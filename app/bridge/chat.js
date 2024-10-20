@@ -51,13 +51,13 @@ class ChatGateway extends Bridge {
     }
 
     setupWAWeb(config) {
-        if (config) {
+        if (config && (config.enabled === undefined || config.enabled)) {
             this.createFactory({factory: WAWeb, config: config});
         }
     }
 
     setupSMSGateway(config) {
-        if (config && config.url) {
+        if (config && (config.enabled === undefined || config.enabled) && config.url) {
             this.createFactory({factory: SMSGateway, config: config});
         }
     }
@@ -276,6 +276,7 @@ class ChatConsumer {
 
 class WAWeb extends ChatConsumer {
 
+    /** @type {Client} */
     client = null
     numbers = null
     qrnotify = null

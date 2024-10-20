@@ -207,7 +207,7 @@ class ChatFactory {
     }
 
     create() {
-        if (this.instance == null) {
+        if (this.instance === null) {
             this.instance = new this.factory(this.parent);
             if (!this.instance instanceof ChatConsumer) {
                 throw new Error(`${this.instance.constructor.name} must be a sub class of ChatConsumer.`);
@@ -259,7 +259,7 @@ class ChatConsumer {
     canHandle(msg) {
         if (this.isConnected()) {
             if (msg.consumer) {
-                return msg.consumer == this.id;
+                return msg.consumer === this.id;
             }
             return true;
         }
@@ -286,8 +286,8 @@ class WAWeb extends ChatConsumer {
     initialize(config) {
         this.id = 'wa';
         this.waNumbersFile = path.join(path.dirname(this.parent.getApp().queueDir), 'wanumbers.json');
-        if (typeof config['delay'] != 'undefined') {
-            if (!(typeof config['delay'] == 'number' || Array.isArray(config['delay']))) {
+        if (config['delay'] !== undefined) {
+            if (!(typeof config['delay'] === 'number' || Array.isArray(config['delay']))) {
                 throw new Error('Delay only accept number or array of [min, max]!');
             }
             this.delay = config['delay'];
@@ -302,7 +302,7 @@ class WAWeb extends ChatConsumer {
                 const time = new Date();
                 const interval = config['qr-notify-interval'] || 600000; // 10 minutes
                 const notifyRetry = config['qr-notify-retry'] || 3;
-                if (this.qrnotify == null || (time.getTime() > this.qrnotify.getTime() + interval)) {
+                if (this.qrnotify === null || (time.getTime() > this.qrnotify.getTime() + interval)) {
                     this.qrnotify = time;
                     const qrcode = require('qrcode-terminal');
                     qrcode.generate(qr, {small: true});
@@ -347,7 +347,7 @@ class WAWeb extends ChatConsumer {
                     if (!this.messages[idx].ack) {
                         this.messages[idx].ack = {};
                     }
-                    if (ack == MessageAck.ACK_SERVER) {
+                    if (ack === MessageAck.ACK_SERVER) {
                         this.messages[idx].ack.sent = time;
                     }
                     if (ack >= MessageAck.ACK_DEVICE) {
@@ -357,7 +357,7 @@ class WAWeb extends ChatConsumer {
                             data.hash = this.messages[idx].data.hash;
                         }
                         data.number = this.messages[idx].data.address;
-                        data.code = typeof config['ack-success'] != 'undefined' ? config['ack-success'] : ack;
+                        data.code = config['ack-success'] !== undefined ? config['ack-success'] : ack;
                         data.sent = this.messages[idx].ack.sent;
                         data.received = this.messages[idx].ack.received;
                         this.parent.getApp().log('WAW: Message ack %s', JSON.stringify(data));
@@ -398,7 +398,7 @@ class WAWeb extends ChatConsumer {
     }
 
     loadNumbers(force = false) {
-        if (this.numbers == null || force) {
+        if (this.numbers === null || force) {
             if (fs.existsSync(this.waNumbersFile)) {
                 this.numbers = JSON.parse(fs.readFileSync(this.waNumbersFile));
             } else {
@@ -408,7 +408,7 @@ class WAWeb extends ChatConsumer {
     }
 
     saveNumbers(phone = null) {
-        if (phone != null) {
+        if (phone !== null) {
             if (!this.numbers) {
                 this.numbers = [];
             }
@@ -434,7 +434,7 @@ class WAWeb extends ChatConsumer {
     }
 
     normalizeNumber(number) {
-        if (number.substr(0, 1) == '+') {
+        if (number.substr(0, 1) === '+') {
             number = number.substr(1);
         }
         return number;
@@ -443,7 +443,7 @@ class WAWeb extends ChatConsumer {
     getMsgIndex(msg) {
         for (let i = 0; i < this.messages.length; i++) {
             if (this.messages[i].msg && this.messages[i].msg.id) {
-                if (this.messages[i].msg.id.id == msg.id.id) {
+                if (this.messages[i].msg.id.id === msg.id.id) {
                     return i;
                 }
             }
@@ -471,13 +471,14 @@ class WAWeb extends ChatConsumer {
 
 class SMSGateway extends ChatConsumer {
 
+    /** @type {io.Socket} */
     io = null
 
     initialize(config) {
         this.id = 'sms';
         if (config.url) {
             console.log('SMS Gateway at %s', config.url);
-            this.io = io(config.url, config.options || {});
+            this.io = this.parent.createSocketClient(config);
             this.io
                 .on('connect', () => {
                     console.log('Connected to SMS Gateway at %s', config.url);

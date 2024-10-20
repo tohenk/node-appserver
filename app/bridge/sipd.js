@@ -27,8 +27,11 @@ const Bridge = require('./bridge');
 
 class Sipd extends Bridge {
 
+    /** @type {io.Socket} */
     sipd = null
+    /** @type {boolean} */
     connected = false
+    /** @type {io.Socket[]} */
     clients = []
 
     onInit() {
@@ -38,7 +41,7 @@ class Sipd extends Bridge {
     setupSipd(config) {
         if (config && config.url) {
             console.log('SIPD Bridge at %s', config.url);
-            this.sipd = io(config.url);
+            this.sipd = this.createSocketClient(config);
             this.sipd
                 .on('connect', () => {
                     console.log('SIPD: Connected to %s', config.url);

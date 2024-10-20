@@ -23,6 +23,7 @@
  */
 
 const MessagingServer = require('../ntmsg');
+const io = require('socket.io-client');
 
 class MessagingBridge {
 
@@ -63,6 +64,33 @@ class MessagingBridge {
     }
 
     disconnect(con) {
+    }
+
+    /**
+     * Create socket client.
+     *
+     * @param {object} params Client parameters
+     * @param {string} params.url Socket url with namespace
+     * @param {options} params.options Socket options
+     * @returns {io.Socket}
+     */
+    createSocketClient(params) {
+        if (params.url) {
+            const options = params.options || {};
+            // guess socket io path automatically
+            if (!options.path) {
+                const url = new URL(params.url);
+                const path = url.pathname
+                    .split('/')
+                    .filter(a => a.length);
+                if (path.length > 1) {
+                    // remove namespace
+                    path.pop();
+                    options.path = `/${path.join('/')}/socket.io/`;
+                }
+            }
+            return io(params.url, options);
+        }
     }
 }
 

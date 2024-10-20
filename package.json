@@ -3,8 +3,8 @@
     "version": "1.0.0",
     "private": true,
     "dependencies": {
-        "@ntlab/ntlib": "^2.1.3",
-        "@ntlab/work": "^2.1.0",
+        "@ntlab/ntlib": "^2.2.0",
+        "@ntlab/work": "^2.2.0",
         "@xmpp/client": "^0.12.1",
         "debug": "^4.3.7",
         "qrcode-terminal": "^0.12.0",

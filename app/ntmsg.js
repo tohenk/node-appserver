@@ -115,6 +115,9 @@ class MessagingServer {
         return new Promise((resolve, reject) => {
             const p = cmd.exec(values);
             p.on('message', data => {
+                if (typeof data === 'object' && data.type === 'Buffer' && Array.isArray(data.data)) {
+                    data = Buffer.from(data.data);
+                }
                 console.log(`${name}: %s`, data);
             });
             p.on('exit', code => {

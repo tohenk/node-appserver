@@ -118,7 +118,54 @@ class MessagingServer {
                 if (typeof data === 'object' && data.type === 'Buffer' && Array.isArray(data.data)) {
                     data = Buffer.from(data.data);
                 }
-                console.log(`${name}: %s`, data);
+                if (typeof data === 'object' && data.cmd) {
+                    switch (data.cmd) {
+                        case 'get-cookie':
+                            if (data.domain && data.path) {
+                                if (this.cookies && this.cookies[data.domain]) {
+                                    const cookies = {};
+                                    for (const cookiePath of Object.keys(this.cookies[data.domain])) {
+                                        if (data.path.startsWith(cookiePath)) {
+                                            Object.assign(cookies, this.cookies[data.domain][cookiePath]);
+                                        }
+                                    }
+                                    if (Object.keys(cookies).length) {
+                                        const cookie = [];
+                                        for (const k of Object.keys(cookies)) {
+                                            cookie.push(`${k}=${cookies[k]}`);
+                                        }
+                                        p.send({cookie});
+                                    }
+                                }
+                            }
+                            break;
+                        case 'set-cookie':
+                            /**
+                             * {
+                             *   '/': {Cookie1: 'Value1', Cookie2: 'Value2'
+                             * }
+                             */
+                            if (data.domain && data.cookie) {
+                                if (!this.cookies) {
+                                    this.cookies = {};
+                                }
+                                if (!this.cookies[data.domain]) {
+                                    this.cookies[data.domain] = {};
+                                }
+                                for (const cookiePath of Object.keys(data.cookie)) {
+                                    if (!this.cookies[data.domain][cookiePath]) {
+                                        this.cookies[data.domain][cookiePath] = {};
+                                    }
+                                    Object.assign(this.cookies[data.domain][cookiePath], data.cookie[cookiePath]);
+                                }
+                            }
+                            break;
+                    }
+                    data = null;
+                }
+                if (data) {
+                    console.log(`${name}: %s`, data);
+                }
             });
             p.on('exit', code => {
                 this.log(`${name}: Exit code %s...`, code);

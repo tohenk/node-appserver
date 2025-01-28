@@ -1,7 +1,7 @@
 /**
  * The MIT License (MIT)
  *
- * Copyright (c) 2016-2024 Toha <tohenk@yahoo.com>
+ * Copyright (c) 2016-2025 Toha <tohenk@yahoo.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
  * this software and associated documentation files (the "Software"), to deal in
@@ -46,11 +46,11 @@ class AppServer {
     create(options) {
         options = options || {};
         let server;
-        let port = options.port || cmd.get('port');
-        let secure = options.secure || cmd.get('secure');
+        const port = options.port || cmd.get('port');
+        const secure = options.secure || cmd.get('secure');
         // check instance in server pool
         if (Servers[port]) {
-            if (Servers[port]['secure'] != secure) {
+            if (Servers[port]['secure'] !== secure) {
                 throw new Error('Can\'t recreate server on port ' + port + '.');
             }
             return Servers[port]['server'];
@@ -71,7 +71,7 @@ class AppServer {
         }
         const f = () => {
             console.log("%s server listening on %s...", secure ? 'HTTPS' : 'HTTP', this.getAddress(server));
-            if (typeof options.callback == 'function') {
+            if (typeof options.callback === 'function') {
                 options.callback(server);
             }
         }
@@ -106,7 +106,7 @@ class AppServer {
 
     getAddress(server) {
         const addr = server.address();
-        return addr.family == 'IPv4' ? addr.address : '[' + addr.address + ']' + ':' + addr.port;
+        return addr.family === 'IPv4' ? addr.address : '[' + addr.address + ']' + ':' + addr.port;
     }
 
     createApp(server, name, options) {
@@ -122,12 +122,16 @@ class AppServer {
         const socket = this.createSocket(server, port, options.cors ? {cors: options.cors} : {});
         const factory = (ns, options) => {
             const tmp = [];
-            if (namespace) tmp.push(namespace);
-            if (ns) tmp.push(ns);
+            if (namespace) {
+                tmp.push(namespace);
+            }
+            if (ns) {
+                tmp.push(ns);
+            }
             const s = '/' + tmp.join('/');
             return this.socketWrap(tmp.length ? socket.of(s) : socket.sockets, options);
         }
-        if (params.logdir == undefined) {
+        if (params.logdir === undefined) {
             params.logdir = path.resolve(path.dirname(this.config),
                 options.logdir ? options.logdir : cmd.get('logdir'));
         }
@@ -153,7 +157,7 @@ class AppServer {
             io = Servers[port]['io'];
         }
         if (!io) {
-            let opts = {};
+            const opts = {};
             if (options && options.cors) {
                 opts.cors = options.cors;
             }
@@ -171,11 +175,11 @@ class AppServer {
     }
 
     notifyAppClose() {
-        for (let port in Servers) {
+        for (const port in Servers) {
             console.log('Notify application exit for server on port %s', port);
             for (let i = 0; i < Servers[port].apps.length; i++) {
                 console.log('Notify application %s', Servers[port].apps[i].name);
-                if (typeof Servers[port].apps[i].doClose == 'function') {
+                if (typeof Servers[port].apps[i].doClose === 'function') {
                     Servers[port].apps[i].doClose(Servers[port].server);
                 }
             }
@@ -192,18 +196,20 @@ class AppServer {
         if (this.config && util.fileExist(this.config)) {
             console.log('Reading configuration %s', this.config);
             const apps = JSON.parse(fs.readFileSync(this.config));
-            for (let name in apps) {
-                let options = apps[name];
-                if (!typeof options == 'object') {
+            for (const name in apps) {
+                const options = apps[name];
+                if (!typeof options === 'object') {
                     throw new Error('Application configuration must be an object.');
                 }
-                if (options.module == undefined) {
+                if (options.module === undefined) {
                     throw new Error('Application module for ' + name + ' not defined.');
                 }
-                if (options.enabled != undefined && !options.enabled) {
+                if (options.enabled !== undefined && !options.enabled) {
                     continue;
                 }
-                if (!options.port) options.port = cmd.get('port') || 8080;
+                if (!options.port) {
+                    options.port = cmd.get('port') || 8080;
+                }
                 this.server = this.create(options);
                 this.createApp(this.server, name, options);
                 cnt++;

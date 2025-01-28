@@ -1,7 +1,7 @@
 /**
  * The MIT License (MIT)
  *
- * Copyright (c) 2020-2024 Toha <tohenk@yahoo.com>
+ * Copyright (c) 2020-2025 Toha <tohenk@yahoo.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
  * this software and associated documentation files (the "Software"), to deal in
@@ -51,11 +51,11 @@ class WAWeb extends ChatConsumer {
         this.workdir = path.dirname(this.parent.getApp().queueDir);
         this.numbers = new WANumber(path.join(this.workdir, 'wa.json'));
         this.terms = new WANumber(path.join(this.workdir, 'wa-tc.json'));
-        if (config['delay'] !== undefined) {
-            if (!(typeof config['delay'] === 'number' || Array.isArray(config['delay']))) {
+        if (config.delay !== undefined) {
+            if (!(typeof config.delay === 'number' || Array.isArray(config.delay))) {
                 throw new Error('Delay only accept number or array of [min, max]!');
             }
-            this.delay = config['delay'];
+            this.delay = config.delay;
         }
         this.eula = config.eula || 'To improve user experience for our services, we will send the message through this channel.\nReply with *YES* to agree.';
         const params = {authStrategy: new LocalAuth()};
@@ -136,8 +136,13 @@ class WAWeb extends ChatConsumer {
         ;
     }
 
-    canConsume(msg, retry) {
+    canConsume(msg, flags) {
         const number = this.normalizeNumber(msg.address);
+        // i don't like broadcast message
+        // i can't resent message
+        if (flags && (flags.broadcast || flags.retry)) {
+            return Promise.resolve(false);
+        }
         return Work.works([
             ['contact', w => this.getWAContact(number)],
             ['has-chat', w => this.isChatExist(w.getRes('contact')), w => w.getRes('contact')],

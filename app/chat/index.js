@@ -1,7 +1,7 @@
 /**
  * The MIT License (MIT)
  *
- * Copyright (c) 2020-2024 Toha <tohenk@yahoo.com>
+ * Copyright (c) 2020-2025 Toha <tohenk@yahoo.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
  * this software and associated documentation files (the "Software"), to deal in
@@ -152,10 +152,10 @@ class ChatConsumer {
      * Consume message.
      *
      * @param {object} msg Message
-     * @param {boolean} retry Wheter a new message or a retry for previous one
+     * @param {object} flags Mesage flags
      * @returns {Promise<boolean>}
      */
-    canConsume(msg, retry) {
+    canConsume(msg, flags) {
         return Promise.reject('Not handled!');
     }
 

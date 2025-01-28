@@ -1,7 +1,7 @@
 /**
  * The MIT License (MIT)
  *
- * Copyright (c) 2020-2024 Toha <tohenk@yahoo.com>
+ * Copyright (c) 2020-2025 Toha <tohenk@yahoo.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
  * this software and associated documentation files (the "Software"), to deal in
@@ -25,7 +25,7 @@
 const fs = require('fs');
 const path = require('path');
 const Queue = require('@ntlab/work/queue');
-const Bridge = require('./bridge');
+const Bridge = require('.');
 const { ChatFactory, ChatConsumer } = require('../chat');
 const SMSGateway = require('../chat/smsgw');
 const WAWeb = require('../chat/waweb');
@@ -57,13 +57,13 @@ class ChatGateway extends Bridge {
 
     setupWAWeb(config) {
         if (config && (config.enabled === undefined || config.enabled)) {
-            this.createFactory({factory: WAWeb, config: config});
+            this.createFactory({factory: WAWeb, config});
         }
     }
 
     setupSMSGateway(config) {
         if (config && (config.enabled === undefined || config.enabled) && config.url) {
-            this.createFactory({factory: SMSGateway, config: config});
+            this.createFactory({factory: SMSGateway, config});
         }
     }
 
@@ -92,10 +92,18 @@ class ChatGateway extends Bridge {
             if (data.consumer) {
                 msg.consumer = data.consumer;
             }
-            this.consume(msg, data.attr)
+            const flags = {};
+            if (typeof data.attr === 'number') {
+                flags.retry = data.attr;
+            } else if (typeof data.attr === 'object') {
+                Object.assign(flags, data.attr);
+            }
+            this.consume(msg, flags)
                 .then(() => this.queue.next())
                 .catch(err => {
-                    if (err) console.error(err);
+                    if (err) {
+                        console.error(err);
+                    }
                     this.queue.next();
                 });
         }, () => {
@@ -126,14 +134,14 @@ class ChatGateway extends Bridge {
         }
     }
 
-    consume(msg, retry) {
+    consume(msg, flags) {
         return new Promise((resolve, reject) => {
             let handler;
             const q = new Queue([...this.consumers], consumer => {
                 if (consumer.canHandle(msg)) {
                     this.getApp().log('CGW: %s handling %s...', consumer.constructor.name, JSON.stringify(msg));
                     handler = consumer;
-                    consumer.canConsume(msg, retry)
+                    consumer.canConsume(msg, flags)
                         .then(res => {
                             if (res) {
                                 q.done();

@@ -1,7 +1,7 @@
 /**
  * The MIT License (MIT)
  *
- * Copyright (c) 2020-2024 Toha <tohenk@yahoo.com>
+ * Copyright (c) 2020-2025 Toha <tohenk@yahoo.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
  * this software and associated documentation files (the "Software"), to deal in
@@ -74,9 +74,9 @@ class SMSGateway extends ChatConsumer {
         }
     }
 
-    canConsume(msg, retry) {
+    canConsume(msg, flags) {
         return new Promise((resolve, reject) => {
-            if (retry) {
+            if (flags && flags.retry) {
                 this.io.emit('message-retry', msg);
             } else {
                 this.io.emit('message', msg);

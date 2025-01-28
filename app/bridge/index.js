@@ -1,7 +1,7 @@
 /**
  * The MIT License (MIT)
  *
- * Copyright (c) 2020-2024 Toha <tohenk@yahoo.com>
+ * Copyright (c) 2020-2025 Toha <tohenk@yahoo.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
  * this software and associated documentation files (the "Software"), to deal in
@@ -71,7 +71,7 @@ class MessagingBridge {
      *
      * @param {object} params Client parameters
      * @param {string} params.url Socket url with namespace
-     * @param {options} params.options Socket options
+     * @param {object} params.options Socket options
      * @returns {io.Socket}
      */
     createSocketClient(params) {

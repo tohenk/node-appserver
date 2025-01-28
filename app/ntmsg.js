@@ -1,7 +1,7 @@
 /**
  * The MIT License (MIT)
  *
- * Copyright (c) 2016-2024 Toha <tohenk@yahoo.com>
+ * Copyright (c) 2016-2025 Toha <tohenk@yahoo.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
  * this software and associated documentation files (the "Software"), to deal in
@@ -26,14 +26,14 @@ const fs = require('fs');
 const path = require('path');
 const util = require('@ntlab/ntlib/util');
 const Logger = require('@ntlab/ntlib/logger');
-const Bridge = require('./bridge/bridge');
+const Bridge = require('./bridge');
 const Queue = require('@ntlab/work/queue');
 
 const Connections = {};
 
-const CON_SERVER = 1
-const CON_LISTENER = 2
-const CON_CLIENT = 3
+const CON_SERVER = 1;
+const CON_LISTENER = 2;
+const CON_CLIENT = 3;
 
 class MessagingServer {
 
@@ -339,9 +339,9 @@ class MessagingServer {
             this.log('SVR: %s: Push notification: %s...', con.id, JSON.stringify(data));
             if (data.name !== undefined) {
                 if (info.group) {
-                    this.con.to(info.group).emit(data.name, data.data != undefined ? data.data : {});
+                    this.con.to(info.group).emit(data.name, data.data !== undefined ? data.data : {});
                 } else {
-                    this.con.emit(data.name, data.data != undefined ? data.data : {});
+                    this.con.emit(data.name, data.data !== undefined ? data.data : {});
                 }
             }
         });

@@ -43,8 +43,8 @@ class WAWeb extends ChatConsumer {
     qrcount = 0
     /** @type {number} */
     delay = 0
-    /** @type {object[]} */
-    messages = []
+    /** @type {object} */
+    messages = {}
 
     initialize(config) {
         this.id = 'wa';
@@ -107,28 +107,28 @@ class WAWeb extends ChatConsumer {
                 .catch(err => console.error(err));
             })
             .on('message_ack', (msg, ack) => {
-                const idx = this.getMsgIndex(msg);
-                if (idx >= 0) {
+                const info = this.messages[msg.id.id];
+                if (info) {
                     const time = new Date();
-                    if (!this.messages[idx].ack) {
-                        this.messages[idx].ack = {};
+                    if (!info.ack) {
+                        info.ack = {};
                     }
                     if (ack === MessageAck.ACK_SERVER) {
-                        this.messages[idx].ack.sent = time;
+                        info.ack.sent = time;
                     }
                     if (ack >= MessageAck.ACK_DEVICE) {
-                        this.messages[idx].ack.received = time;
+                        info.ack.received = time;
                         const data = {};
-                        if (this.messages[idx].data.hash) {
-                            data.hash = this.messages[idx].data.hash;
+                        if (info.data.hash) {
+                            data.hash = info.data.hash;
                         }
-                        data.number = this.messages[idx].data.address;
+                        data.number = info.data.address;
                         data.code = config['ack-success'] !== undefined ? config['ack-success'] : ack;
-                        data.sent = this.messages[idx].ack.sent;
-                        data.received = this.messages[idx].ack.received;
+                        data.sent = info.ack.sent;
+                        data.received = info.ack.received;
                         this.parent.getApp().log('WAW: Message ack %s', JSON.stringify(data));
                         this.parent.onReport(data);
-                        this.messages.splice(idx);
+                        delete this.messages[msg.id.id];
                     }
                 }
             })
@@ -146,10 +146,9 @@ class WAWeb extends ChatConsumer {
         return Work.works([
             ['contact', w => this.getWAContact(number)],
             ['has-chat', w => this.isChatExist(w.getRes('contact')), w => w.getRes('contact')],
-            ['tc', w => this.isTermAndConditionPending(number, w.getRes('contact')), w => !w.getRes('has-chat')],
-            ['no-tc', w => Promise.resolve(false), w => !w.getRes('has-chat')],
-            ['send-msg', w => this.client.sendMessage(w.getRes('contact'), msg.data), w => w.getRes('has-chat')],
-            ['push-msg', w => Promise.resolve(this.messages.push({data: msg, msg: w.getRes('send-msg')})), w => w.getRes('has-chat')],
+            ['tc', w => this.isTermAndConditionPending(number, w.getRes('contact'), msg), w => !w.getRes('has-chat')],
+            ['no-tc', w => Promise.resolve(w.getRes('tc')), w => !w.getRes('has-chat')],
+            ['send-msg', w => this.sendMsg(w.getRes('contact'), msg), w => w.getRes('has-chat')],
             ['delay', w => Promise.resolve(this.getDelay()), w => w.getRes('has-chat')],
             ['sleep', w => this.sleep(w.getRes('delay')), w => w.getRes('has-chat') && w.getRes('delay') > 0],
             ['resolve', w => Promise.resolve(w.getRes('send-msg') ? true : false), w => w.getRes('has-chat')],
@@ -182,12 +181,23 @@ class WAWeb extends ChatConsumer {
         ]);
     }
 
-    isTermAndConditionPending(number, contact) {
+    isTermAndConditionPending(number, contact, msg) {
         return Work.works([
             [w => Promise.resolve(this.terms.exist(number))],
-            [w => this.client.sendMessage(contact, this.eula), w => !w.getRes(0)],
-            [w => Promise.resolve(this.terms.add(number)), w => !w.getRes(0) && w.getRes(1)],
+            [w => this.sendMsg(contact, msg, this.eula), w => !w.getRes(0)],
+            [w => Promise.resolve(this.terms.add(number)), w => w.getRes(1)],
             [w => Promise.resolve(true), w => !w.getRes(0)],
+        ]);
+    }
+
+    sendMsg(contact, msg, info = null) {
+        let message = msg.data;
+        if (info) {
+            message += '\n\n' + info;
+        }
+        return Work.works([
+            [w => this.client.sendMessage(contact, message)],
+            [w => Promise.resolve(this.saveMsg(w.getRes(0), msg)), w => w.getRes(0)],
         ]);
     }
 
@@ -211,15 +221,12 @@ class WAWeb extends ChatConsumer {
         return number;
     }
 
-    getMsgIndex(msg) {
-        for (let i = 0; i < this.messages.length; i++) {
-            if (this.messages[i].msg && this.messages[i].msg.id) {
-                if (this.messages[i].msg.id.id === msg.id.id) {
-                    return i;
-                }
-            }
+    saveMsg(msg, data) {
+        if (msg && msg.id) {
+            this.messages[msg.id.id] = {msg, data};
+            return true;
         }
-        return -1;
+        return false;
     }
 
     getHash(dt, number, message) {

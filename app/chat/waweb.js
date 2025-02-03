@@ -25,39 +25,50 @@
 const fs = require('fs');
 const path = require('path');
 const Work = require('@ntlab/work/work');
+const Queue = require('@ntlab/work/queue');
 const { ChatConsumer } = require('.');
-const { Client, LocalAuth, MessageAck } = require('whatsapp-web.js');
+const { ChatStorage, ChatContact } = require('./storage');
+const { Client, LocalAuth, Message, MessageAck } = require('whatsapp-web.js');
 
 /**
- * A message consumer through WhatsAppchat.
+ * A message consumer through WhatsApp.
  *
  * @author Toha <tohenk@yahoo.com>
  */
 class WAWeb extends ChatConsumer {
 
+    STOR_WA_NUMBERS = 'wa'
+    STOR_WA_TERMS = 'wa-tc'
+
     /** @type {Client} */
     client = null
-    /** @type {Date} */
-    qrnotify = null
     /** @type {number} */
     qrcount = 0
     /** @type {number} */
     delay = 0
     /** @type {object} */
     messages = {}
+    /** @type {ChatStorage} */
+    storage = null
 
     initialize(config) {
         this.id = 'wa';
         this.workdir = path.dirname(this.parent.getApp().queueDir);
-        this.numbers = new WANumber(path.join(this.workdir, 'wa.json'));
-        this.terms = new WANumber(path.join(this.workdir, 'wa-tc.json'));
+        this.storage = new ChatStorage('waweb', this.workdir);
+        this.numbers = this.storage.get(this.STOR_WA_NUMBERS);
+        /** @type {string} */
+        this.eula = config.eula || 'To improve user experience for our services, we will send the message through this channel.\nReply with *YES* to agree.';
+        /** @type {number} */
+        this.qrinterval = config['qr-notify-interval'] || 600000; // 10 minutes
+        /** @type {number} */
+        this.qrretry = config['qr-notify-retry'] || 3;
         if (config.delay !== undefined) {
             if (!(typeof config.delay === 'number' || Array.isArray(config.delay))) {
                 throw new Error('Delay only accept number or array of [min, max]!');
             }
             this.delay = config.delay;
         }
-        this.eula = config.eula || 'To improve user experience for our services, we will send the message through this channel.\nReply with *YES* to agree.';
+        this.bdelay = config['broadcast-delay'] || [60000, 120000]; // 1-2 minutes
         const params = {authStrategy: new LocalAuth()};
         if (config.puppeteer) {
             params.puppeteer = config.puppeteer;
@@ -65,24 +76,32 @@ class WAWeb extends ChatConsumer {
         this.client = new Client(params);
         this.client
             .on('qr', qr => {
-                const time = new Date();
-                const interval = config['qr-notify-interval'] || 600000; // 10 minutes
-                const notifyRetry = config['qr-notify-retry'] || 3;
-                if (this.qrnotify === null || (time.getTime() > this.qrnotify.getTime() + interval)) {
-                    this.qrnotify = time;
+                if (this.isTime('qrnotify', this.qrinterval)) {
                     const qrcode = require('qrcode-terminal');
                     qrcode.generate(qr, {small: true});
-                    if (config.admin && this.qrcount++ < notifyRetry) {
+                    if (config.admin && this.qrcount++ < this.qrretry) {
                         const message = `WhatsApp Web requires QR Code authentication: ${qr}`;
                         const hash = this.getHash(time, config.admin, message);
-                        this.parent.queue.requeue([{hash: hash, number: config.admin, message: message, consumer: 'sms'}]);
+                        this.parent.queue.requeue([{hash, number: config.admin, message, consumer: 'sms'}]);
                     }
                 }
             })
             .on('ready', () => {
                 console.log('WhatsApp Web is ready...');
                 this.connected = true;
+                /**
+                 * {
+                 *     server: 'c.us',
+                 *     user: '6281234567890',
+                 *     _serialized: '6281234567890@c.us'
+                 * }
+                 */
+                this.info = this.client.info;
+                this.terms = this.storage.get(this.STOR_WA_TERMS, this.info.wid.user);
                 this.parent.onState(this);
+                this.migrateStorage(this.numbers);
+                this.migrateStorage(this.terms);
+                console.log('WhatsApp Web:', this.info.pushname, this.info.wid.user);
             })
             .on('authenticated', () => {
                 console.log('WhatsApp Web is authenticated...');
@@ -100,7 +119,7 @@ class WAWeb extends ChatConsumer {
                 .then(contact => {
                     const number = '+' + contact.number;
                     const hash = this.getHash(time, number, msg.body);
-                    const data = {date: time, number: number, message: msg.body, hash: hash};
+                    const data = {date: time, number, message: msg.body, hash};
                     this.parent.getApp().log('WAW: New message %s', JSON.stringify(data));
                     this.parent.onMessage(data);
                 })
@@ -134,24 +153,43 @@ class WAWeb extends ChatConsumer {
             })
             .initialize()
         ;
+        this.createBroadcastQueue();
+    }
+
+    /**
+     * Create broadcast message queue dispatcher.
+     */
+    createBroadcastQueue() {
+        const delay = () => {
+            this.bwait = this.getDelay(this.bdelay);
+        }
+        /** @type {Queue} */
+        this.bq = new Queue([], queue => {
+            const f = err => {
+                if (err) {
+                    console.error(err);
+                }
+                this.bq.next();
+            }
+            this.sendChat(queue.contact, queue.msg)
+                .then(() => f())
+                .catch(err => f(err));
+        }, () => this.isTime('btime', this.bwait, delay));
     }
 
     canConsume(msg, flags) {
         const number = this.normalizeNumber(msg.address);
-        // i don't like broadcast message
         // i can't resent message
-        if (flags && (flags.broadcast || flags.retry)) {
+        if (flags && flags.retry) {
             return Promise.resolve(false);
         }
         return Work.works([
             ['contact', w => this.getWAContact(number)],
-            ['has-chat', w => this.isChatExist(w.getRes('contact')), w => w.getRes('contact')],
-            ['tc', w => this.isTermAndConditionPending(number, w.getRes('contact'), msg), w => !w.getRes('has-chat')],
-            ['no-tc', w => Promise.resolve(w.getRes('tc')), w => !w.getRes('has-chat')],
-            ['send-msg', w => this.sendMsg(w.getRes('contact'), msg), w => w.getRes('has-chat')],
-            ['delay', w => Promise.resolve(this.getDelay()), w => w.getRes('has-chat')],
-            ['sleep', w => this.sleep(w.getRes('delay')), w => w.getRes('has-chat') && w.getRes('delay') > 0],
-            ['resolve', w => Promise.resolve(w.getRes('send-msg') ? true : false), w => w.getRes('has-chat')],
+            ['broadcast', w => Promise.resolve(this.bq.requeue([{contact: w.getRes('contact'), msg}])),
+                w => w.getRes('contact') && flags.broadcast],
+            ['send', w => this.sendChat(w.getRes('contact'), msg),
+                w => w.getRes('contact') && !flags.broadcast],
+            ['resolve', w => Promise.resolve(w.getRes('contact') ? true : false)],
         ]);
     }
 
@@ -159,12 +197,12 @@ class WAWeb extends ChatConsumer {
         this.client.destroy();
     }
 
-    sleep(ms) {
-        return new Promise((resolve, reject) => {
-            setTimeout(() => resolve(), ms);
-        });
-    }
-
+    /**
+     * Get WhatsApp contact from phone number.
+     *
+     * @param {string} number Phone number
+     * @returns {Promise<string>}
+     */
     getWAContact(number) {
         return Work.works([
             [w => Promise.resolve(this.isWANumber(number))],
@@ -173,6 +211,12 @@ class WAWeb extends ChatConsumer {
         ]);
     }
 
+    /**
+     * Is chat exist for WhatsApp contact?
+     *
+     * @param {string} contact WhatsApp serialized contact
+     * @returns {Promise<boolean}
+     */
     isChatExist(contact) {
         return Work.works([
             [w => this.client.getChatById(contact)],
@@ -181,15 +225,38 @@ class WAWeb extends ChatConsumer {
         ]);
     }
 
-    isTermAndConditionPending(number, contact, msg) {
+    /**
+     * Send chat message to WhatsApp contact.
+     *
+     * @param {string} contact WhatsApp serialized contact
+     * @param {object} msg Message data
+     * @returns {Promise<boolean>}
+     */
+    sendChat(contact, msg) {
         return Work.works([
-            [w => Promise.resolve(this.terms.exist(number))],
-            [w => this.sendMsg(contact, msg, this.eula), w => !w.getRes(0)],
-            [w => Promise.resolve(this.terms.add(number)), w => w.getRes(1)],
-            [w => Promise.resolve(true), w => !w.getRes(0)],
+            // is chat already present
+            ['chat', w => this.isChatExist(contact)],
+            // is eula need to send?
+            ['eula', w => Promise.resolve(w.getRes('chat') ? false : !this.terms.exist(this.getContactNumber(contact))), w => !w.getRes('chat')],
+            // send message
+            ['send', w => this.sendMsg(contact, msg, w.getRes('eula') ? this.eula : null)],
+            // wait a moment
+            ['delay', w => this.noop(), w => w.getRes('send')],
+            // save eula send state
+            ['save', w => Promise.resolve(this.terms.add(this.getContactNumber(contact))), w => w.getRes('send') && w.getRes('eula')],
+            // done
+            ['resolve', w => Promise.resolve(w.getRes('send') ? true : false)],
         ]);
     }
 
+    /**
+     * Send WhatsApp message.
+     *
+     * @param {string} contact WhatsApp serialized contact
+     * @param {object} msg Message data
+     * @param {string} info Additional message to append to message
+     * @returns {Promise<boolean>}
+     */
     sendMsg(contact, msg, info = null) {
         let message = msg.data;
         if (info) {
@@ -201,6 +268,12 @@ class WAWeb extends ChatConsumer {
         ]);
     }
 
+    /**
+     * Check if phone number is using WhatsApp.
+     *
+     * @param {string} number Phone number
+     * @returns {Promise<boolean>}
+     */
     isWANumber(number) {
         return Work.works([
             [w => Promise.resolve(this.numbers.exist(number))],
@@ -214,6 +287,69 @@ class WAWeb extends ChatConsumer {
         ]);
     }
 
+    /**
+     * @param {ChatContact} storage Contact storage
+     */
+    migrateStorage(storage) {
+        const filename = path.join(this.workdir, `${storage.name}.json`);
+        if (fs.existsSync(filename)) {
+            return new Promise((resolve, reject) => {
+                const datas = JSON.parse(fs.readFileSync(filename));
+                if (Array.isArray(datas)) {
+                    for (const nr of datas) {
+                        storage.add(nr);
+                    }
+                }
+                fs.renameSync(filename, path.join(this.workdir, `${storage.name}~.json`));
+                resolve();
+            });
+        } else {
+            return Promise.resolve();
+        }
+    }
+
+    /**
+     * No operation.
+     *
+     * @returns {Promise<void>}
+     */
+    noop() {
+        const delay = this.getDelay(this.delay);
+        if (delay > 0) {
+            return this.sleep(delay);
+        } else {
+            return Promise.resolve();
+        }
+    }
+
+    /**
+     * Sleep for milli seconds.
+     *
+     * @param {number} ms Time
+     * @returns {Promise<void>}
+     */
+    sleep(ms) {
+        return new Promise((resolve, reject) => {
+            setTimeout(() => resolve(), ms);
+        });
+    }
+
+    /**
+     * Get phone number from WhatsApp contact.
+     *
+     * @param {string} contact WhatsApp contact
+     * @returns {string}
+     */
+    getContactNumber(contact) {
+        return contact.split('@')[0];
+    }
+
+    /**
+     * Normalize a phone number by removing international number sign (+).
+     *
+     * @param {string} number Phone number
+     * @returns {string}
+     */
     normalizeNumber(number) {
         if (number.substr(0, 1) === '+') {
             number = number.substr(1);
@@ -221,6 +357,13 @@ class WAWeb extends ChatConsumer {
         return number;
     }
 
+    /**
+     * Save WhatsApp message.
+     *
+     * @param {Message} msg WhatsApp message
+     * @param {object} data Original message data
+     * @returns {boolean}
+     */
     saveMsg(msg, data) {
         if (msg && msg.id) {
             this.messages[msg.id.id] = {msg, data};
@@ -229,83 +372,64 @@ class WAWeb extends ChatConsumer {
         return false;
     }
 
+    /**
+     * Check if time is due.
+     *
+     * @param {string} name Time identifier
+     * @param {number} interval Interval
+     * @param {any} cb On due callback
+     * @returns {boolean}
+     */
+    isTime(name, interval, cb) {
+        const now = new Date();
+        /** @type {Date} */
+        const time = this[name];
+        if (time === undefined || (now.getTime() > time.getTime() + interval)) {
+            this[name] = now;
+            if (typeof cb === 'function') {
+                cb();
+            }
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Generate hash.
+     *
+     * @param {Date} dt Date
+     * @param {string} number Phone number
+     * @param {string} message Text message
+     * @returns {string}
+     */
     getHash(dt, number, message) {
         const shasum = require('crypto').createHash('sha1');
         shasum.update([dt.toISOString(), number, message].join(''));
         return shasum.digest('hex');
     }
 
-    getDelay() {
-        if (Array.isArray(this.delay)) {
-            return this.getRnd(this.delay[0], this.delay[1]);
+    /**
+     * Get randomized delay.
+     *
+     * @param {number|number[]} ms Range or fixed delay
+     * @returns {number}
+     */
+    getDelay(ms) {
+        if (Array.isArray(ms)) {
+            return this.getRnd(ms[0], ms[1]);
         }
-        return this.delay;
+        return ms !== undefined ? ms : 0;
     }
 
+    /**
+     * Get random number from range.
+     *
+     * @param {number} min Min
+     * @param {number} max Max
+     * @returns {number}
+     */
     getRnd(min, max) {
         return Math.floor(Math.random() * (max - min)) + min;
-    }
-}
-
-/**
- * WhatsApp contact number.
- *
- * @author Toha <tohenk@yahoo.com>
- */
-class WANumber {
-
-    /**
-     * Constructor.
-     *
-     * @param {string} filename Filename
-     */
-    constructor(filename) {
-        this.filename = filename;
-    }
-
-    /**
-     * Load numbers from file.
-     *
-     * @param {boolean} force True to force load
-     * @returns {WANumber}
-     */
-    load(force = null) {
-        if (this.numbers === undefined || force) {
-            if (fs.existsSync(this.filename)) {
-                this.numbers = JSON.parse(fs.readFileSync(this.filename));
-            } else {
-                this.numbers = [];
-            }
-        }
-        return this;
-    }
-
-    /**
-     * Add or save the entire numbers to file.
-     *
-     * @param {string} number The phone number
-     * @returns {WANumber}
-     */
-    add(number) {
-        if (number) {
-            this.load();
-            this.numbers.push(number);
-        }
-        if (this.numbers) {
-            fs.writeFileSync(this.filename, JSON.stringify(this.numbers));
-        }
-        return this;
-    }
-
-    /**
-     * Is phone number exist?
-     *
-     * @param {string} number The phone number
-     * @returns {boolean}
-     */
-    exist(number) {
-        this.load();
-        return this.numbers.indexOf(number) >= 0;
     }
 }
 

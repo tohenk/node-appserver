@@ -53,7 +53,8 @@ class WAWeb extends ChatConsumer {
 
     initialize(config) {
         this.id = 'wa';
-        this.workdir = path.dirname(this.parent.getApp().queueDir);
+        this.workdir = path.join(path.dirname(this.parent.getApp().queueDir), 'waweb');
+        fs.mkdirSync(this.workdir, {recursive: true});
         this.storage = new ChatStorage('waweb', this.workdir);
         this.numbers = this.storage.get(this.STOR_WA_NUMBERS);
         /** @type {string} */

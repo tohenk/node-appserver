@@ -180,10 +180,6 @@ class WAWeb extends ChatConsumer {
 
     canConsume(msg, flags) {
         const number = this.normalizeNumber(msg.address);
-        // i can't resent message
-        if (flags && flags.retry) {
-            return Promise.resolve(false);
-        }
         return Work.works([
             ['contact', w => this.getWAContact(number)],
             ['broadcast', w => Promise.resolve(this.bq.requeue([{contact: w.getRes('contact'), msg}])),

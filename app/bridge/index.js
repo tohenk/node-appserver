@@ -94,6 +94,12 @@ class MessagingBridge {
                     socketUrl = url.toString();
                 }
             }
+            if (params.token) {
+                if (!options.extraHeaders) {
+                    options.extraHeaders = {};
+                }
+                options.extraHeaders.Authorization = `Bearer ${params.token}`;
+            }
             return io(socketUrl, options);
         } else {
             throw new Error('Unable to create socket client without url!');

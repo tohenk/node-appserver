@@ -75,7 +75,8 @@ class MessagingBridge {
      * @returns {io.Socket}
      */
     createSocketClient(params) {
-        if (params.url) {
+        let socketUrl = params.url;
+        if (socketUrl) {
             const options = params.options || {};
             // guess socket io path automatically
             if (!options.path) {
@@ -85,11 +86,17 @@ class MessagingBridge {
                     .filter(a => a.length);
                 if (path.length > 1) {
                     // remove namespace
-                    path.pop();
+                    const ns = path.pop();
+                    // set socket.io path
                     options.path = `/${path.join('/')}/socket.io/`;
+                    // update socket url
+                    url.pathname = `/${ns}`;
+                    socketUrl = url.toString();
                 }
             }
-            return io(params.url, options);
+            return io(socketUrl, options);
+        } else {
+            throw new Error('Unable to create socket client without url!');
         }
     }
 }

@@ -58,7 +58,7 @@ class ReportServer {
     }
 
     initializeLogger() {
-        this.logdir = this.options.logdir || path.join(__dirname, 'logs');
+        this.logdir = this.options.logdir || path.join(this.options.workdir, 'logs');
         this.logfile = path.join(this.logdir, 'ntreport.log');
         this.logger = new Logger(this.logfile);
     }

@@ -45,7 +45,6 @@ class ChatGateway extends Bridge {
     notifyQueue = null
 
     onInit() {
-        this.queueFilename = path.join(this.getApp().queueDir, 'messages.json');
         this.createQueue();
         this.setupWAWeb(this.getConfig('whatsapp'));
         this.setupSMSGateway(this.getConfig('smsgw'));
@@ -82,6 +81,10 @@ class ChatGateway extends Bridge {
     }
 
     createQueue() {
+        this.queueFilename = path.join(this.config.workdir, 'queue', 'messages.json');
+        if (!fs.existsSync(path.dirname(this.queueFilename))) {
+            fs.mkdirSync(path.dirname(this.queueFilename), {recursive: true});
+        }
         const queues = this.loadQueue();
         this.queue = new Queue(queues, data => {
             const msg = {

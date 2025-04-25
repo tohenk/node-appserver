@@ -53,7 +53,7 @@ class WAWeb extends ChatConsumer {
 
     initialize(config) {
         this.id = 'wa';
-        this.workdir = path.join(path.dirname(this.parent.getApp().queueDir), 'waweb');
+        this.workdir = path.join(this.parent.config.workdir, '.waweb');
         fs.mkdirSync(this.workdir, {recursive: true});
         this.storage = new ChatStorage('waweb', this.workdir);
         this.numbers = this.storage.get(this.STOR_WA_NUMBERS);
@@ -70,11 +70,14 @@ class WAWeb extends ChatConsumer {
             this.delay = config.delay;
         }
         this.bdelay = config['broadcast-delay'] || [60000, 120000]; // 1-2 minutes
-        const params = {authStrategy: new LocalAuth()};
-        if (config.puppeteer) {
-            params.puppeteer = config.puppeteer;
+        const opts = {
+            authStrategy: new LocalAuth({dataPath: this.workdir}),
+            webVersionCache: {path: path.join(this.workdir, 'cache')}
         }
-        this.client = new Client(params);
+        if (config.puppeteer) {
+            opts.puppeteer = config.puppeteer;
+        }
+        this.client = new Client(opts);
         this.client
             .on('qr', qr => {
                 if (this.isTime('qrnotify', this.qrinterval)) {

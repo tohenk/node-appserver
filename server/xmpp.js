@@ -41,20 +41,20 @@ class AppServer {
         const title = options.title || name;
         const module = options.module;
         const configs = options.params || {};
-        const params = {};
+        const opts = {
+            workdir: options.workdir,
+            logdir: path.resolve(options.workdir,
+                options.logdir ? options.logdir : cmd.get('logdir')),
+        }
         const factory = (ns, params) => {
             return new XmppConnection(options);
-        }
-        if (params.logdir === undefined) {
-            params.logdir = path.resolve(path.dirname(this.config),
-                options.logdir ? options.logdir : cmd.get('logdir'));
         }
         console.log('');
         console.log(title);
         console.log('='.repeat(79));
         console.log('');
         const AppClass = require('./../' + module);
-        const instance = new AppClass(this, factory, configs, params);
+        const instance = new AppClass(this, factory, configs, opts);
         console.log('');
         console.log('-'.repeat(79));
         instance.name = name;
@@ -65,7 +65,7 @@ class AppServer {
         let cnt = 0;
         this.config = cmd.get('config') || process.env[global.ENV_CONFIG];
         if (!this.config) {
-            this.config = path.dirname(process.argv[1]) + path.sep + 'app.json';
+            this.config = path.join(path.dirname(process.argv[1]), 'app.json');
         }
         console.log('Checking configuration %s', this.config);
         if (this.config && util.fileExist(this.config)) {
@@ -73,6 +73,9 @@ class AppServer {
             const apps = JSON.parse(fs.readFileSync(this.config));
             for (const name in apps) {
                 const options = apps[name];
+                if (options.workdir === undefined) {
+                    options.workdir = path.dirname(this.config);
+                }
                 if (!typeof options === 'object') {
                     throw new Error('Application configuration must be an object.');
                 }

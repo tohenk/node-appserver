@@ -65,10 +65,6 @@ class MessagingServer {
         if (this.config.timeout !== undefined) {
             this.registerTimeout = this.config.timeout;
         }
-        this.queueDir = path.join(path.dirname(this.appserver.config), 'queue');
-        if (!fs.existsSync(this.queueDir)) {
-            fs.mkdirSync(this.queueDir);
-        }
         this.initializeLogger();
         this.createBridges();
         const ns = this.config.namespace || null;
@@ -77,7 +73,7 @@ class MessagingServer {
     }
 
     initializeLogger() {
-        this.logdir = this.options.logdir || path.join(__dirname, 'logs');
+        this.logdir = this.options.logdir || path.join(this.options.workdir, 'logs');
         this.logfile = path.join(this.logdir, 'ntmsg.log');
         this.logger = new Logger(this.logfile);
     }
@@ -88,7 +84,7 @@ class MessagingServer {
                 const BridgeClass = require(bridge);
                 const br = new BridgeClass(this);
                 if (br instanceof Bridge) {
-                    br.initialize(this.config);
+                    br.initialize({...this.config, workdir: this.options.workdir});
                     this.bridges.push(br);
                 }
             });

@@ -68,11 +68,13 @@ class ChatFactory {
                 setTimeout(() => {
                     let idx = this.parent.consumers.indexOf(this.instance);
                     if (idx >= 0) {
-                        this.parent.consumers.splice(idx);
-                        this.instance.close();
-                        this.instance = null;
                         const delay = this.config['restart-delay'] || 60000;
-                        setTimeout(() => this.create(), delay);
+                        setTimeout(() => {
+                            this.parent.consumers.splice(idx);
+                            this.instance.close();
+                            this.instance = null;
+                            this.create();
+                        }, delay);
                         console.log('Restart for %s scheduled in %d s', this.factory.name, delay / 1000);
                     }
                 }, this.config['restart-every']);

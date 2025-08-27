@@ -24,11 +24,12 @@
 
 const fs = require('fs');
 const path = require('path');
+const mime = require('mime-types');
 const Work = require('@ntlab/work/work');
 const Queue = require('@ntlab/work/queue');
 const { ChatConsumer } = require('.');
 const { ChatStorage, ChatContact } = require('./storage');
-const { Client, LocalAuth, Message, MessageAck } = require('whatsapp-web.js');
+const { Client, LocalAuth, Message, MessageAck, MessageMedia } = require('whatsapp-web.js');
 
 /**
  * A message consumer through WhatsApp.
@@ -175,7 +176,7 @@ class WAWeb extends ChatConsumer {
                 }
                 this.bq.next();
             }
-            this.sendChat(queue.contact, queue.msg)
+            this.sendChat(queue.contact, queue.msg, queue.flags)
                 .then(() => f())
                 .catch(err => f(err));
         }, () => this.isTime('btime', this.bwait, delay));
@@ -185,9 +186,9 @@ class WAWeb extends ChatConsumer {
         const number = this.normalizeNumber(msg.address);
         return Work.works([
             ['contact', w => this.getWAContact(number)],
-            ['broadcast', w => Promise.resolve(this.bq.requeue([{contact: w.getRes('contact'), msg}])),
+            ['broadcast', w => Promise.resolve(this.bq.requeue([{contact: w.getRes('contact'), msg, flags}])),
                 w => w.getRes('contact') && flags.broadcast],
-            ['send', w => this.sendChat(w.getRes('contact'), msg),
+            ['send', w => this.sendChat(w.getRes('contact'), msg, flags),
                 w => w.getRes('contact') && !flags.broadcast],
             ['resolve', w => Promise.resolve(w.getRes('contact') ? true : false)],
         ]);
@@ -230,16 +231,17 @@ class WAWeb extends ChatConsumer {
      *
      * @param {string} contact WhatsApp serialized contact
      * @param {object} msg Message data
+     * @param {object|null} payload Message payload
      * @returns {Promise<boolean>}
      */
-    sendChat(contact, msg) {
+    sendChat(contact, msg, payload = null) {
         return Work.works([
             // is chat already present
             ['chat', w => this.isChatExist(contact)],
             // is eula need to send?
             ['eula', w => Promise.resolve(w.getRes('chat') ? false : !this.terms.exist(this.getContactNumber(contact))), w => !w.getRes('chat')],
             // send message
-            ['send', w => this.sendMsg(contact, msg, w.getRes('eula') ? this.eula : null)],
+            ['send', w => this.sendMsg(contact, msg, payload, w.getRes('eula') ? this.eula : null)],
             // wait a moment
             ['delay', w => this.noop(), w => w.getRes('send')],
             // save eula send state
@@ -254,16 +256,26 @@ class WAWeb extends ChatConsumer {
      *
      * @param {string} contact WhatsApp serialized contact
      * @param {object} msg Message data
+     * @param {object|null} payload Message payload
      * @param {string} info Additional message to append to message
      * @returns {Promise<boolean>}
      */
-    sendMsg(contact, msg, info = null) {
+    sendMsg(contact, msg, payload = null, info = null) {
+        const options = {};
         let message = msg.data;
         if (info) {
             message += '\n\n' + info;
         }
+        if (payload && payload.attachment) {
+            const attachment = payload.attachment;
+            if (attachment.content && attachment.filename) {
+                /** @type {Buffer} */
+                const data = attachment.content instanceof Buffer ? attachment.content : Buffer.from(attachment.content);
+                options.media = new MessageMedia(mime.lookup(attachment.filename), data.toString('base64'), attachment.filename);
+            }
+        }
         return Work.works([
-            [w => this.client.sendMessage(contact, message)],
+            [w => this.client.sendMessage(contact, message, options)],
             [w => Promise.resolve(this.saveMsg(w.getRes(0), msg)), w => w.getRes(0)],
         ]);
     }

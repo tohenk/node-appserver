@@ -74,9 +74,7 @@ class ChatGateway extends Bridge {
     handleServer(con) {
         con.on('text-message', data => {
             this.getApp().log('SVR: %s: Send text to %s "%s"...', con.id, data.number, data.message);
-            if (this.queue) {
-                this.queue.requeue([data]);
-            }
+            this.queue.requeue([data]);
         });
     }
 
@@ -87,6 +85,7 @@ class ChatGateway extends Bridge {
         }
         const queues = this.loadQueue();
         this.queue = new Queue(queues, data => {
+            this.getApp().log('CGW: Processing %s', data);
             const msg = {
                 hash: data.hash,
                 address: data.number,

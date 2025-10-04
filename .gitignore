@@ -1,5 +1,5 @@
+.grabber/
+.waweb/
 logs/
 node_modules/
 queue/
-.wwebjs_auth/
-wanumbers.json

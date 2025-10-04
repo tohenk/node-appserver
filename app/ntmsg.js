@@ -22,7 +22,6 @@
  * SOFTWARE.
  */
 
-const fs = require('fs');
 const path = require('path');
 const util = require('@ntlab/ntlib/util');
 const Logger = require('@ntlab/ntlib/logger');

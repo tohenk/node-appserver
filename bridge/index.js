@@ -22,7 +22,7 @@
  * SOFTWARE.
  */
 
-const MessagingServer = require('../ntmsg');
+const MessagingServer = require('../app/ntmsg');
 const io = require('socket.io-client');
 
 class MessagingBridge {

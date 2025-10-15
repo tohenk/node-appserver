@@ -1,17 +1,25 @@
 {
-    "node-appserver": "Node.js App Server",
-    "version": "1.0.0",
-    "private": true,
-    "dependencies": {
-        "@ntlab/ntlib": "^2.6.2",
-        "@ntlab/urllib": "^1.1.0",
-        "@ntlab/work": "^2.3.0",
-        "@xmpp/client": "^0.13.6",
-        "debug": "^4.4.3",
-        "mime-types": "^3.0.1",
-        "qrcode-terminal": "^0.12.0",
-        "socket.io": "^4.8.1",
-        "socket.io-client": "^4.8.1",
-        "whatsapp-web.js": "^1.34.1"
-    }
+  "name": "@ntlab/app-server",
+  "version": "2.0.0",
+  "description": "App Server for IPC",
+  "author": "Toha <tohenk@yahoo.com>",
+  "license": "MIT",
+  "main": "main.js",
+  "keywords": [
+    "ipc",
+    "socket.io",
+    "xmpp"
+  ],
+  "dependencies": {
+    "@ntlab/ntlib": "^2.7.0",
+    "@ntlab/urllib": "^1.1.0",
+    "@ntlab/work": "^2.5.0",
+    "@xmpp/client": "^0.13.6",
+    "debug": "^4.4.3",
+    "mime-types": "^3.0.1",
+    "qrcode-terminal": "^0.12.0",
+    "socket.io": "^4.8.1",
+    "socket.io-client": "^4.8.1",
+    "whatsapp-web.js": "^1.34.1"
+  }
 }

@@ -60,7 +60,7 @@ class UrlGrabber extends Bridge {
                 const res = {success: false};
                 if (data.url) {
                     this.getApp().log('GRB: %s: Grab %s...', con.id, data.url);
-                    Object.assign(res, this.getFile(data.url, data.callback));
+                    Object.assign(res, this.getFile(con.info.group, data.url, data.callback));
                 }
                 con.emit('grab-file', res);
             })
@@ -124,9 +124,12 @@ class UrlGrabber extends Bridge {
             });
     }
 
-    getFile(url, callback) {
+    getFile(group, url, callback) {
         const res = {queue: this.genId()};
         this.statuses[res.queue] = {};
+        if (group) {
+            this.statuses[res.queue].group = group;
+        }
         if (callback) {
             this.statuses[res.queue].callback = callback;
         }
@@ -282,7 +285,7 @@ class UrlGrabber extends Bridge {
                     console.log(`🔔 ${url}: Callback error ${err}`);
                 });
         } else {
-            this.getApp().doCmd(null, 'grabber', ['%DATA%'], {DATA: JSON.stringify(payload)});
+            this.getApp().doCmd(data.group, 'grabber', ['%DATA%'], {DATA: JSON.stringify(payload)});
         }
     }
 

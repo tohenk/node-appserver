@@ -25,8 +25,8 @@
 const path = require('path');
 const util = require('@ntlab/ntlib/util');
 const Logger = require('@ntlab/ntlib/logger');
-const Bridge = require('./bridge');
 const Queue = require('@ntlab/work/queue');
+const Bridge = require('../bridge');
 
 const Connections = {};
 
@@ -34,6 +34,11 @@ const CON_SERVER = 1;
 const CON_LISTENER = 2;
 const CON_CLIENT = 3;
 
+/**
+ * An app IPC which grouped by server, listener, or client.
+ *
+ * @author Toha <tohenk@yahoo.com>
+ */
 class MessagingServer {
 
     appserver = null
@@ -65,10 +70,10 @@ class MessagingServer {
             this.registerTimeout = this.config.timeout;
         }
         this.initializeLogger();
-        this.createBridges();
         const ns = this.config.namespace || null;
         this.con = this.factory(ns);
         this.listen(this.con);
+        this.createBridges();
     }
 
     initializeLogger() {
@@ -80,7 +85,7 @@ class MessagingServer {
     createBridges() {
         if (this.config.bridges) {
             this.config.bridges.forEach(bridge => {
-                const BridgeClass = require(bridge);
+                const BridgeClass = require(`../bridge/${bridge}`);
                 const br = new BridgeClass(this);
                 if (br instanceof Bridge) {
                     br.initialize({...this.config, workdir: this.options.workdir});
@@ -90,8 +95,8 @@ class MessagingServer {
         }
     }
 
-    log() {
-        this.logger.log.apply(this.logger, Array.from(arguments));
+    log(...args) {
+        this.logger.log(...args);
     }
 
     getPaths() {
@@ -308,10 +313,10 @@ class MessagingServer {
     }
 
     handleServerCon(con) {
-        const info = Connections[con.id];
+        con.info = Connections[con.id];
         con.on('whos-online', () => {
             this.log('SVR: %s: Query whos-online...', con.id);
-            const users = this.getUsers(info.group);
+            const users = this.getUsers(con.info.group);
             con.emit('whos-online', users);
             for (let i = 0; i < users.length; i++) {
                 this.log('SVR: %s: User: %s, time: %d', con.id, users[i].uid, users[i].time);
@@ -328,13 +333,13 @@ class MessagingServer {
             if (data.referer) {
                 notif.referer = data.referer;
             }
-            this.con.to(this.getRoom(data.uid, info.group)).emit('notification', notif);
+            this.con.to(this.getRoom(data.uid, con.info.group)).emit('notification', notif);
         });
         con.on('push-notification', data => {
             this.log('SVR: %s: Push notification: %s...', con.id, JSON.stringify(data));
             if (data.name !== undefined) {
-                if (info.group) {
-                    this.con.to(info.group).emit(data.name, data.data !== undefined ? data.data : {});
+                if (con.info.group) {
+                    this.con.to(con.info.group).emit(data.name, data.data !== undefined ? data.data : {});
                 } else {
                     this.con.emit(data.name, data.data !== undefined ? data.data : {});
                 }
@@ -342,30 +347,30 @@ class MessagingServer {
         });
         con.on('message', data => {
             this.log('SVR: %s: New message for %s...', con.id, data.uid);
-            this.con.to(this.getRoom(data.uid, info.group)).emit('message');
+            this.con.to(this.getRoom(data.uid, con.info.group)).emit('message');
         });
         con.on('deliver-email', data => {
             this.log('SVR: %s: Deliver email %s...', con.id, data.hash);
             if (data.attr) {
-                this.deliverEmail(info.group, data.hash, data.attr);
+                this.deliverEmail(con.info.group, data.hash, data.attr);
             } else {
-                this.deliverEmail(info.group, data.hash);
+                this.deliverEmail(con.info.group, data.hash);
             }
         });
         con.on('user-signin', data => {
             this.log('SVR: %s: User signin %s...', con.id, data.username);
-            this.notifySignin(info.group, 'SIGNIN', data);
+            this.notifySignin(con.info.group, 'SIGNIN', data);
         });
         con.on('user-signout', data => {
             this.log('SVR: %s: User signout %s...', con.id, data.username);
-            this.notifySignin(info.group, 'SIGNOUT', data);
+            this.notifySignin(con.info.group, 'SIGNOUT', data);
         });
         con.on('data', data => {
             this.log('SVR: %s: Receiving data %s...', con.id, JSON.stringify(data));
             if (data.id && data.params) {
-                this.deliverData(info.group, data.id, data.params);
+                this.deliverData(con.info.group, data.id, data.params);
             }
-            this.con.to(this.getRoom(this.listenerRoom, info.group)).emit('data', data);
+            this.con.to(this.getRoom(this.listenerRoom, con.info.group)).emit('data', data);
         });
         // handle bridges server connection
         this.bridges.forEach(bridge => {
@@ -374,15 +379,15 @@ class MessagingServer {
     }
 
     handleClientCon(con) {
-        const info = Connections[con.id];
+        con.info = Connections[con.id];
         con.on('notification-read', data => {
             if (data.uid) {
-                this.con.to(this.getRoom(data.uid, info.group)).emit('notification-read', data);
+                this.con.to(this.getRoom(data.uid, con.info.group)).emit('notification-read', data);
             }
         });
         con.on('message-sent', data => {
             if (data.uid) {
-                this.con.to(this.getRoom(data.uid, info.group)).emit('message-sent', data);
+                this.con.to(this.getRoom(data.uid, con.info.group)).emit('message-sent', data);
             }
         });
         // handle bridges client connection

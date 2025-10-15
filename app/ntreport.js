@@ -26,6 +26,11 @@ const path = require('path');
 const util = require('@ntlab/ntlib/util');
 const Logger = require('@ntlab/ntlib/logger');
 
+/**
+ * A report generator listen for report request and generate the report in the background.
+ *
+ * @author Toha <tohenk@yahoo.com>
+ */
 class ReportServer {
 
     config = null
@@ -63,8 +68,8 @@ class ReportServer {
         this.logger = new Logger(this.logfile);
     }
 
-    log() {
-        this.logger.log.apply(this.logger, Array.from(arguments));
+    log(...args) {
+        this.logger.log(...args);
     }
 
     handleCon(con, cmd) {

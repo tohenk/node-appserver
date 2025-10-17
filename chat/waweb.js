@@ -117,18 +117,20 @@ class WAWeb extends ChatConsumer {
                 this.parent.onState(this);
             })
             .on('message', msg => {
-                const time = new Date();
-                Work.works([
-                    [w => Promise.resolve(msg.getContact())]
-                ])
-                .then(contact => {
-                    const number = '+' + contact.number;
-                    const hash = this.getHash(time, number, msg.body);
-                    const data = {date: time, number, message: msg.body, hash};
-                    this.parent.getApp().log('WAW: New message %s', JSON.stringify(data));
-                    this.parent.onMessage(data);
-                })
-                .catch(err => console.error(err));
+                if (msg.body) {
+                    const time = new Date();
+                    Work.works([
+                        [w => Promise.resolve(msg.getContact())]
+                    ])
+                    .then(contact => {
+                        const number = '+' + contact.number;
+                        const hash = this.getHash(time, number, msg.body);
+                        const data = {date: time, number, message: msg.body, hash};
+                        this.parent.getApp().log('WAW: New message %s', JSON.stringify(data));
+                        this.parent.onMessage(data);
+                    })
+                    .catch(err => console.error(err));
+                }
             })
             .on('message_ack', (msg, ack) => {
                 const info = this.messages[msg.id.id];

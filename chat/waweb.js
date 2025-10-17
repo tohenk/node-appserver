@@ -184,6 +184,22 @@ class WAWeb extends ChatConsumer {
         }, () => this.isTime('btime', this.bwait, delay));
     }
 
+    getState() {
+        return {
+            messages: {...this.messages},
+            broadcasts: [...this.bq.queues],
+        }
+    }
+
+    setState(state) {
+        if (state.messages && Object.keys(state.messages).length) {
+            this.messages = {...state.messages};
+        }
+        if (Array.isArray(state.broadcasts)) {
+            this.bq.requeue(state.broadcasts);
+        }
+    }
+
     canConsume(msg, flags) {
         const number = this.normalizeNumber(msg.address);
         return Work.works([

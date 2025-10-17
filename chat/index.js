@@ -71,9 +71,13 @@ class ChatFactory {
                         const delay = this.config['restart-delay'] || 60000;
                         setTimeout(() => {
                             this.parent.consumers.splice(idx);
+                            const state = this.instance.getState();
                             this.instance.close();
                             this.instance = null;
                             this.create();
+                            if (state) {
+                                this.instance.setState(state);
+                            }
                         }, delay);
                         console.log('Restart for %s scheduled in %d s', this.factory.name, delay / 1000);
                     }
@@ -132,6 +136,23 @@ class ChatConsumer {
      */
     isConnected() {
         return this.connected;
+    }
+
+    /**
+     * Get current state.
+     *
+     * @returns {object|undefined}
+     */
+    getState() {
+    }
+
+    /**
+     * Set current state.
+     *
+     * @param {object} state Saved state
+     * @returns {void}
+     */
+    setState(state) {
     }
 
     /**

@@ -34,7 +34,7 @@ function service(cmd) {
     const path = require('path');
     const Service = require('node-windows').Service;
     const dir = fs.realpathSync(path.join(__dirname, '..', '..'));
-    const app = path.join(dir, 'app.js');
+    const app = path.join(dir, 'main.js');
     const config = path.join(dir, 'node-appserver.json');
     const svc = new Service({
         name: 'NodeAppServer',

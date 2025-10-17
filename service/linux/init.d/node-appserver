@@ -19,7 +19,7 @@ LOCAL_VAR_RUN=/var/run
 PREFIX=/home/nodeapp
 APP_DIR=$PREFIX/node-appserver
 CONFIG_DIR=$APP_DIR
-APP_MAIN=$APP_DIR/app.js
+APP_MAIN=$APP_DIR/main.js
 APP_CONFIG=$CONFIG_DIR/node-appserver.json
 
 # Uncomment if using SSL

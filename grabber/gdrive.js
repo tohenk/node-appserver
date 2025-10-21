@@ -115,12 +115,7 @@ class GDriveGrabber {
                 }
                 f();
             });
-            if (started) {
-                const filename = path.join(downloadPath, this.state.name);
-                if (fs.existsSync(filename)) {
-                    fs.renameSync(filename, options.outfile);
-                }
-            }
+            await page.waitForTimeout(opdelay);
         }
         catch (e) {
             err = e;
@@ -130,6 +125,12 @@ class GDriveGrabber {
         }
         if (err) {
             throw err;
+        }
+        if (started) {
+            const filename = path.join(downloadPath, this.state.name);
+            if (fs.existsSync(filename)) {
+                fs.renameSync(filename, options.outfile);
+            }
         }
         return {success: fs.existsSync(options.outfile), ...this.state};
     }

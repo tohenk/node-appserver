@@ -214,7 +214,7 @@ class Grabber extends Bridge {
         } else {
             console.log(`📂 ${id}: Completed...`);
         }
-        const payload = {queue: id};
+        const payload = {queue: id, tempname: this.FILENAME};
         for (const prop of ['name', 'mime', 'size']) {
             if (data[prop] !== undefined) {
                 payload[prop] = data[prop];

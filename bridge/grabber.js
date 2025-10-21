@@ -26,14 +26,14 @@ const fs = require('fs');
 const path = require('path');
 const Bridge = require('.');
 const UrlFetch = require('@ntlab/urllib/fetch');
-const UrlDownload = require('@ntlab/urllib/download');
+const GrabHandler = require('../grabber');
 
 /**
  * Fetch file from url.
  *
  * @author Toha <tohenk@yahoo.com>
  */
-class UrlGrabber extends Bridge {
+class Grabber extends Bridge {
 
     FILENAME = '~file'
 
@@ -75,6 +75,8 @@ class UrlGrabber extends Bridge {
                         if (bytesTotal > 0) {
                             const bytesDone = this.statuses[data.queue].done || 0;
                             res.progress = Math.ceil(bytesDone / bytesTotal * 100);
+                        } else {
+                            res.progress = 0;
                         }
                     }
                 }
@@ -135,13 +137,16 @@ class UrlGrabber extends Bridge {
         }
         const outdir = path.join(this.workdir, res.queue);
         fs.mkdirSync(outdir, {recursive: true});
-        const downloader = new UrlDownload();
-        downloader.fetch(url,
-            {
-                outfile: path.join(outdir, this.FILENAME),
-                onstart: async data => this.storeStatus(res.queue, data),
-                ondata: async data => this.storeStatus(res.queue, data)
-            })
+        const options = {
+            doOnStart: async data => this.storeStatus(res.queue, data),
+            doOnData: async data => this.storeStatus(res.queue, data),
+            outfile: path.join(outdir, this.FILENAME),
+        }
+        const puppeteer = this.getConfig('puppeteer');
+        if (puppeteer) {
+            options.puppeteer = puppeteer;
+        }
+        GrabHandler.grab(url, options)
             .then(data => this.storeResult(res.queue, data))
             .catch(err => this.storeError(res.queue, err));
         this.saveStatuses();
@@ -151,50 +156,31 @@ class UrlGrabber extends Bridge {
     storeStatus(id, data) {
         if (this.statuses[id] !== undefined) {
             let updated = false;
-            if (data.code) {
-                if (this.statuses[id].code !== data.code) {
-                    this.statuses[id].code = data.code;
-                    if (data.status) {
-                        this.statuses[id].status = data.status;
-                    }
+            for (const [k, v] of Object.entries(data)) {
+                if (this.statuses[id][k] !== v) {
+                    this.statuses[id][k] = v;
                     if (!updated) {
                         updated = true;
                     }
                 }
             }
-            if (data.headers) {
-                const info = this.extractFileInfo(data.headers);
-                for (const [k, v] of Object.entries(info)) {
-                    if (this.statuses[id][k] !== v) {
-                        this.statuses[id][k] = v;
-                        if (!updated) {
-                            updated = true;
-                        }
-                    }
-                }
-            }
-            if (data.stream) {
-                this.statuses[id].done = data.stream.bytesWritten;
-                if (!updated) {
-                    updated = true;
-                }
-            }
             if (updated) {
                 this.saveStatuses();
             }
+            return updated;
         }
     }
 
     storeResult(id, data) {
         if (this.statuses[id] !== undefined) {
-            if (data.stream) {
-                this.statuses[id].done = data.stream.bytesWritten;
-                if (this.statuses[id].code >= 200 && this.statuses[id].code < 400) {
-                    this.saveStatuses();
-                    this.sendResult(id, this.statuses[id]);
-                } else {
-                    this.storeError(id, `${this.statuses[id].code} ${this.statuses[id].status}`);
-                }
+            if (data.done) {
+                this.statuses[id].done = data.done;
+            }
+            if (data.success) {
+                this.saveStatuses();
+                this.sendResult(id, this.statuses[id]);
+            } else {
+                this.storeError(id, data.error);
             }
         }
     }
@@ -214,26 +200,6 @@ class UrlGrabber extends Bridge {
         catch (err) {
             console.error(`Unable to save ${this.statusFilename}: ${err}!`);
         }
-    }
-
-    extractFileInfo(headers) {
-        const info = {};
-        if (headers['content-disposition']) {
-            const filename = UrlFetch.getFilenameOrUrl(headers['content-disposition']);
-            if (filename) {
-                info.name = filename;
-            }
-        }
-        if (headers['content-type']) {
-            info.mime = headers['content-type'];
-            if (info.mime.includes(';')) {
-                info.mime = info.mime.substr(0, info.mime.indexOf(';')).trim();
-            }
-        }
-        if (headers['content-length']) {
-            info.size = parseInt(headers['content-length']);
-        }
-        return info;
     }
 
     /**
@@ -298,4 +264,4 @@ class UrlGrabber extends Bridge {
     }
 }
 
-module.exports = UrlGrabber;
+module.exports = Grabber;

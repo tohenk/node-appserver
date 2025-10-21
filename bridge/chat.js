@@ -45,8 +45,15 @@ class ChatGateway extends Bridge {
     notifyQueue = null
 
     onInit() {
+        const wawebConfig = this.getConfig('whatsapp');
+        if (wawebConfig) {
+            const puppeteer = this.getConfig('puppeteer');
+            if (puppeteer && wawebConfig.puppeteer === undefined) {
+                wawebConfig.puppeteer = puppeteer;
+            }
+        }
         this.createQueue();
-        this.setupWAWeb(this.getConfig('whatsapp'));
+        this.setupWAWeb(wawebConfig);
         this.setupSMSGateway(this.getConfig('smsgw'));
     }
 

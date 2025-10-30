@@ -62,7 +62,7 @@ class SMSGateway extends ChatConsumer {
                 })
                 .on('message', (hash, number, message, time) => {
                     this.parent.getApp().log('SMS: %s: New message from %s', hash, number);
-                    this.parent.onMessage({date: time, number: number, message: message, hash: hash});
+                    this.parent.onMessage({date: time, number, message, hash});
                 })
                 .on('status-report', data => {
                     if (data.hash) {
@@ -74,8 +74,18 @@ class SMSGateway extends ChatConsumer {
         }
     }
 
+    /**
+     * Consume message.
+     *
+     * @param {import('../bridge/chat').ChatMessage} msg Message
+     * @param {object} flags Mesage flags
+     * @returns {Promise<boolean>}
+     */
     canConsume(msg, flags) {
         return new Promise((resolve, reject) => {
+            if (flags && flags.sender) {
+                msg.data = `${flags.sender}: ${msg.data}`;
+            }
             if (flags && flags.retry) {
                 this.io.emit('message-retry', msg);
             } else {

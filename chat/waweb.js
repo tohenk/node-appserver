@@ -32,6 +32,12 @@ const { ChatStorage, ChatContact } = require('./storage');
 const { Client, LocalAuth, Message, MessageAck, MessageMedia } = require('whatsapp-web.js');
 
 /**
+ * @typedef {Object} Attachment
+ * @property {Buffer|string} content
+ * @property {string} filename
+ */
+
+/**
  * A message consumer through WhatsApp.
  *
  * @author Toha <tohenk@yahoo.com>
@@ -200,6 +206,13 @@ class WAWeb extends ChatConsumer {
         }
     }
 
+    /**
+     * Consume message.
+     *
+     * @param {import('../bridge/chat').ChatMessage} msg Message
+     * @param {object} flags Mesage flags
+     * @returns {Promise<boolean>}
+     */
     canConsume(msg, flags) {
         const number = this.normalizeNumber(msg.address);
         return Work.works([
@@ -248,18 +261,19 @@ class WAWeb extends ChatConsumer {
      * Send chat message to WhatsApp contact.
      *
      * @param {string} contact WhatsApp serialized contact
-     * @param {object} msg Message data
-     * @param {object|null} payload Message payload
+     * @param {import('../bridge/chat').ChatMessage} msg Message data
+     * @param {object|null} options Message options
      * @returns {Promise<boolean>}
      */
-    sendChat(contact, msg, payload = null) {
+    sendChat(contact, msg, options = null) {
+        options = options || {};
         return Work.works([
             // is chat already present
             ['chat', w => this.isChatExist(contact)],
             // is eula need to send?
             ['eula', w => Promise.resolve(w.getRes('chat') ? false : !this.terms.exist(this.getContactNumber(contact))), w => !w.getRes('chat')],
             // send message
-            ['send', w => this.sendMsg(contact, msg, payload, w.getRes('eula') ? this.eula : null)],
+            ['send', w => this.sendMsg(contact, msg, {...options, info: w.getRes('eula') ? this.eula : null})],
             // wait a moment
             ['delay', w => this.noop(), w => w.getRes('send')],
             // save eula send state
@@ -273,27 +287,29 @@ class WAWeb extends ChatConsumer {
      * Send WhatsApp message.
      *
      * @param {string} contact WhatsApp serialized contact
-     * @param {object} msg Message data
-     * @param {object|null} payload Message payload
-     * @param {string} info Additional message to append to message
+     * @param {import('../bridge/chat').ChatMessage} msg Message data
+     * @param {object|null} options Message options
+     * @param {Attachment} options.attachment Message attachment
+     * @param {string} options.info Additional message to append to original message
      * @returns {Promise<boolean>}
      */
-    sendMsg(contact, msg, payload = null, info = null) {
-        const options = {};
+    sendMsg(contact, msg, options = null) {
+        options = options || {};
+        const params = {};
         let message = msg.data;
-        if (info) {
-            message += '\n\n' + info;
+        if (options.info) {
+            message += '\n\n' + options.info;
         }
-        if (payload && payload.attachment) {
-            const attachment = payload.attachment;
+        if (options.attachment) {
+            /** @type {Attachment} */
+            const attachment = options.attachment;
             if (attachment.content && attachment.filename) {
-                /** @type {Buffer} */
                 const data = attachment.content instanceof Buffer ? attachment.content : Buffer.from(attachment.content);
-                options.media = new MessageMedia(mime.lookup(attachment.filename), data.toString('base64'), attachment.filename);
+                params.media = new MessageMedia(mime.lookup(attachment.filename), data.toString('base64'), attachment.filename);
             }
         }
         return Work.works([
-            [w => this.client.sendMessage(contact, message, options)],
+            [w => this.client.sendMessage(contact, message, params)],
             [w => Promise.resolve(this.saveMsg(w.getRes(0), msg)), w => w.getRes(0)],
         ]);
     }
@@ -391,7 +407,7 @@ class WAWeb extends ChatConsumer {
      * Save WhatsApp message.
      *
      * @param {Message} msg WhatsApp message
-     * @param {object} data Original message data
+     * @param {import('../bridge/chat').ChatMessage} data Original message data
      * @returns {boolean}
      */
     saveMsg(msg, data) {

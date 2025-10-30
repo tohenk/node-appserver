@@ -158,7 +158,7 @@ class ChatConsumer {
     /**
      * Is consumer can handle the message?
      *
-     * @param {object} msg Message
+     * @param {import('../bridge/chat').ChatMessage} msg Message
      * @returns {boolean}
      */
     canHandle(msg) {
@@ -174,7 +174,7 @@ class ChatConsumer {
     /**
      * Consume message.
      *
-     * @param {object} msg Message
+     * @param {import('../bridge/chat').ChatMessage} msg Message
      * @param {object} flags Mesage flags
      * @returns {Promise<boolean>}
      */

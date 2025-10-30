@@ -31,6 +31,14 @@ const SMSGateway = require('../chat/smsgw');
 const WAWeb = require('../chat/waweb');
 
 /**
+ * @typedef {Object} ChatMessage
+ * @property {string} hash Message hash
+ * @property {string} address Destination address
+ * @property {string} data Message content
+ * @property {?ChatConsumer} consumer Message consumer
+ */
+
+/**
  * Chat gateway provide a message channel for client through SMS or WhatsApp chat.
  *
  * @author Toha <tohenk@yahoo.com>
@@ -167,18 +175,24 @@ class ChatGateway extends Bridge {
         }
     }
 
+    /**
+     * Consume chat message.
+     *
+     * @param {ChatMessage} msg Message
+     * @param {object} flags Message flags
+     * @returns {Promise<undefined>}
+     */
     consume(msg, flags) {
         return new Promise((resolve, reject) => {
             let handler;
             const q = new Queue([...this.consumers], consumer => {
                 if (consumer.canHandle(msg)) {
                     this.getApp().log('CGW: %s handling %s...', consumer.constructor.name, JSON.stringify(msg));
-                    handler = consumer;
                     consumer.canConsume(msg, flags)
                         .then(res => {
                             if (res) {
+                                handler = consumer;
                                 q.done();
-                                resolve();
                             } else {
                                 q.next();
                             }
@@ -191,6 +205,8 @@ class ChatGateway extends Bridge {
             q.once('done', () => {
                 if (!handler) {
                     reject(`No consumer can handle message ${JSON.stringify(msg)}!`);
+                } else {
+                    resolve();
                 }
             });
         });

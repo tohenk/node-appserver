@@ -25,7 +25,7 @@
 const UrlDownloader = require('@ntlab/urllib/download');
 
 /**
- * Download file from URL.
+ * Handle file download from URL.
  *
  * @author Toha <tohenk@yahoo.com>
  */
@@ -40,12 +40,30 @@ class UrlGrabber {
     }
 
     async grab(url, options) {
+        return new UrlFileGrabber(url, options)
+            .start();
+    }
+}
+
+/**
+ * Grab file from URL.
+ *
+ * @author Toha <tohenk@yahoo.com>
+ */
+class UrlFileGrabber {
+
+    constructor(url, options) {
+        this.url = url;
+        this.options = options || {};
+    }
+
+    async start() {
         this.state = {};
         const downloader = new UrlDownloader();
-        const res = await downloader.fetch(url, {
-            onstart: async data => await options.doOnStart(this.asMeta(data)),
-            ondata: async data => await options.doOnData(this.asMeta(data)),
-            ...options
+        const res = await downloader.fetch(this.url, {
+            onstart: async data => await this.options.doOnStart(this.asMeta(data)),
+            ondata: async data => await this.options.doOnData(this.asMeta(data)),
+            ...this.options
         });
         return this.asResult(res);
     }

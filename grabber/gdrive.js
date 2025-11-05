@@ -28,14 +28,13 @@ const path = require('path');
 const puppeteer = require('puppeteer');
 
 /**
- * Download file from Google Drive.
+ * Handle file download from Google Drive.
  *
  * @author Toha <tohenk@yahoo.com>
  */
 class GDriveGrabber {
 
     GDRIVE_URL = 'https://drive.google.com/file/d/'
-    GDRIVE_DOWNLOAD = 'https://drive.usercontent.google.com/download?'
 
     canHandle(url) {
         return url.startsWith(this.GDRIVE_URL);
@@ -46,10 +45,30 @@ class GDriveGrabber {
     }
 
     async grab(url, options) {
+        return new GDriveFileGrabber(url, options)
+            .start();
+    }
+}
+
+/**
+ * Grab file from Google Drive.
+ *
+ * @author Toha <tohenk@yahoo.com>
+ */
+class GDriveFileGrabber {
+
+    GDRIVE_DOWNLOAD = 'https://drive.usercontent.google.com/download?'
+
+    constructor(url, options) {
+        this.url = url;
+        this.options = options || {};
+    }
+
+    async start() {
         this.state = {};
-        const loopdelay = options.loopdelay || 100;
-        const opdelay = options.opdelay || 500;
-        const downloadPath = path.dirname(options.outfile);
+        const loopdelay = this.options.loopdelay || 100;
+        const opdelay = this.options.opdelay || 500;
+        const downloadPath = path.dirname(this.options.outfile);
         let browser, err, done = false, started = false;
         try {
             browser = await puppeteer.launch({
@@ -58,7 +77,7 @@ class GDriveGrabber {
                     width: 1024,
                     height: 768
                 },
-                ...(options.puppeteer || {})
+                ...(this.options.puppeteer || {})
             });
             const cdp = await browser.target().createCDPSession();
             await cdp.send('Browser.setDownloadBehavior', {
@@ -69,13 +88,13 @@ class GDriveGrabber {
             cdp
                 .on('Browser.downloadWillBegin', e => {
                     started = true;
-                    if (typeof options.doOnStart === 'function') {
-                        options.doOnStart(this.asMeta(e));
+                    if (typeof this.options.doOnStart === 'function') {
+                        this.options.doOnStart(this.asMeta(e));
                     }
                 })
                 .on('Browser.downloadProgress', e => {
-                    if (typeof options.doOnData === 'function') {
-                        options.doOnData(this.asMeta(e));
+                    if (typeof this.options.doOnData === 'function') {
+                        this.options.doOnData(this.asMeta(e));
                     }
                     if (['completed', 'cancelled'].includes(e.state)) {
                         done = true;
@@ -83,7 +102,7 @@ class GDriveGrabber {
                 });
             const pages = await browser.pages();
             const page = pages.length ? pages[0] : await browser.newPage();
-            await page.goto(url, {waitUntil: 'load'});
+            await page.goto(this.url, {waitUntil: 'load'});
             const title = await page.title();
             if (title && title.includes('Sign-in')) {
                 throw new Error('To download the URL, you need to be signed in Google Drive!');
@@ -129,10 +148,10 @@ class GDriveGrabber {
         if (started) {
             const filename = path.join(downloadPath, this.state.name);
             if (fs.existsSync(filename)) {
-                fs.renameSync(filename, options.outfile);
+                fs.renameSync(filename, this.options.outfile);
             }
         }
-        return {success: fs.existsSync(options.outfile), ...this.state};
+        return {success: fs.existsSync(this.options.outfile), ...this.state};
     }
 
     asMeta(data) {

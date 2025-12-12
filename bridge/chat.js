@@ -53,20 +53,49 @@ class ChatGateway extends Bridge {
     notifyQueue = null
 
     onInit() {
-        const wawebConfig = this.getConfig('whatsapp');
-        if (wawebConfig) {
-            const puppeteer = this.getConfig('puppeteer');
-            if (puppeteer && wawebConfig.puppeteer === undefined) {
-                wawebConfig.puppeteer = puppeteer;
-            }
-        }
         this.createQueue();
-        this.setupWAWeb(wawebConfig);
+        this.setupWAWeb(this.setupWAWebConfig(this.getConfig('whatsapp')));
         this.setupSMSGateway(this.getConfig('smsgw'));
     }
 
     onFinalize() {
         this.saveQueue();
+    }
+
+    /**
+     * WhatsApp Web example configuration.
+     *
+     * {
+     *   "whatsapp": {
+     *     "enabled": true,
+     *     "restart-every": 360000,
+     *     "": [
+     *       {
+     *         "eula": "This is EULA",
+     *         "admin": "+628123456789",
+     *         "accept": ["CODE", "NOTIF"]
+     *       }
+     *     ]
+     *   }
+     * }
+     */
+    setupWAWebConfig(config) {
+        const pptrCfg = cfg => {
+            const pptr = this.getConfig('puppeteer');
+            if (pptr && cfg.puppeteer === undefined) {
+                cfg.puppeteer = pptr;
+            }
+        }
+        if (config) {
+            if (Array.isArray(config[''])) {
+                for (const cfg of config['']) {
+                    pptrCfg(cfg);
+                }
+            } else {
+                pptrCfg(config);
+            }
+        }
+        return config;
     }
 
     setupWAWeb(config) {
@@ -235,7 +264,7 @@ class ChatGateway extends Bridge {
         return cnt;
     }
 
-    onState(sender) {
+    onState() {
         if (this.countReady() > 0) {
             this.getApp().log('CGW: Ready for processing...');
             setTimeout(() => this.queue.next(), 5000);

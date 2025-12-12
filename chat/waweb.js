@@ -28,7 +28,7 @@ const mime = require('mime-types');
 const Work = require('@ntlab/work/work');
 const Queue = require('@ntlab/work/queue');
 const { ChatConsumer } = require('.');
-const { ChatStorage, ChatContact } = require('./storage');
+const { ChatStorage } = require('./storage');
 const { Client, LocalAuth, Message, MessageAck, MessageMedia } = require('whatsapp-web.js');
 
 /**
@@ -42,7 +42,120 @@ const { Client, LocalAuth, Message, MessageAck, MessageMedia } = require('whatsa
  *
  * @author Toha <tohenk@yahoo.com>
  */
-class WAWeb extends ChatConsumer {
+class WAWebChat extends ChatConsumer {
+
+    /** @type {WAWeb[]} */
+    wawebs = []
+
+    initialize(config) {
+        this.id = 'wa';
+        this.workdir = this.createWorkdir('.waweb');
+        this.storage = new ChatStorage('waweb', this.workdir);
+        let seq = 0;
+        for (const cfg of Array.isArray(config['']) ? config[''] : [config]) {
+            if (cfg.enabled !== undefined && !cfg.enabled) {
+                continue;
+            }
+            this.wawebs.push(new WAWeb({
+                name: `waweb-${++seq}`,
+                parent: this.parent,
+                storage: this.storage,
+                workdir: this.workdir,
+                onState: () => this.updateState(),
+                ...cfg
+            }));
+        }
+        const q = new Queue([...this.wawebs], waweb => {
+            waweb.initialize()
+                .then(() => q.next())
+                .catch(err => {
+                    console.error(err);
+                    q.next();
+                });
+        });
+    }
+
+    createWorkdir(dir) {
+        const workdir = path.join(this.parent.config.workdir, dir);
+        fs.mkdirSync(workdir, {recursive: true});
+        return workdir;
+    }
+
+    updateState() {
+        let cnt = 0;
+        for (const waweb of this.wawebs) {
+            if (waweb.connected) {
+                cnt++;
+            }
+        }
+        this.connected = cnt > 0;
+        this.parent.onState();
+    }
+
+    /**
+     * Consume message.
+     *
+     * @param {import('../bridge/chat').ChatMessage} msg Message
+     * @param {object} flags Mesage flags
+     * @returns {Promise<boolean>}
+     */
+    canConsume(msg, flags) {
+        let handler;
+        // if message is a special type, check for handler which can accept it
+        if (flags.TYPE) {
+            handler = this.wawebs
+                .filter(waweb => waweb.connected &&
+                    (
+                        (Array.isArray(waweb.accept) && waweb.accept.includes(flags.TYPE)) ||
+                        waweb.accept === flags.TYPE
+                    )
+                );
+            if (!handler.length) {
+                handler = undefined;
+            }
+        }
+        // fallback to wilcard handler
+        if (!handler) {
+            handler = this.wawebs.filter(waweb => waweb.connected && waweb.accept === undefined);
+        }
+        if (handler.length === 0) {
+            return Promise.resolve(false);
+        }
+        const idx = Math.floor(Math.random() * (handler.length - 1));
+        return handler[idx].canConsume(msg, flags);
+    }
+
+    getState() {
+        const state = [];
+        for (const waweb of this.wawebs) {
+            state.push(waweb.getState());
+        }
+        return state;
+    }
+
+    setState(state) {
+        if (Array.isArray(state)) {
+            for (let i = 0; i < state.length; i++) {
+                if (this.wawebs.length > i) {
+                    this.wawebs[i].setState(state[i]);
+                }
+            }
+        }
+    }
+
+    close() {
+        for (const waweb of this.wawebs) {
+            waweb.close();
+        }
+    }
+}
+
+/**
+ * WhatsApp chat handler.
+ *
+ * @author Toha <tohenk@yahoo.com>
+ */
+class WAWeb {
 
     STOR_WA_NUMBERS = 'wa'
     STOR_WA_TERMS = 'wa-tc'
@@ -58,14 +171,16 @@ class WAWeb extends ChatConsumer {
     /** @type {ChatStorage} */
     storage = null
 
-    initialize(config) {
-        this.id = 'wa';
-        this.workdir = path.join(this.parent.config.workdir, '.waweb');
-        fs.mkdirSync(this.workdir, {recursive: true});
-        this.storage = new ChatStorage('waweb', this.workdir);
+    constructor(config) {
+        this.name = config.name;
+        this.parent = config.parent;
+        this.storage = config.storage;
         this.numbers = this.storage.get(this.STOR_WA_NUMBERS);
+        this.workdir = config.workdir;
+        //fs.mkdirSync(this.workdir, {recursive: true});
         /** @type {string} */
-        this.eula = config.eula || 'To improve user experience for our services, we will send the message through this channel.\nReply with *YES* to agree.';
+        this.eula = config.eula !== undefined ? config.eula :
+            'To improve user experience for our services, we will send the message through this channel.\nReply with *YES* to agree.';
         /** @type {number} */
         this.qrinterval = config['qr-notify-interval'] || 600000; // 10 minutes
         /** @type {number} */
@@ -78,7 +193,7 @@ class WAWeb extends ChatConsumer {
         }
         this.bdelay = config['broadcast-delay'] || [60000, 120000]; // 1-2 minutes
         const opts = {
-            authStrategy: new LocalAuth({dataPath: this.workdir}),
+            authStrategy: new LocalAuth({clientId: this.name, dataPath: this.workdir}),
             webVersionCache: {path: path.join(this.workdir, 'cache')}
         }
         if (config.puppeteer) {
@@ -88,17 +203,18 @@ class WAWeb extends ChatConsumer {
         this.client
             .on('qr', qr => {
                 if (this.isTime('qrnotify', this.qrinterval)) {
+                    console.log(`${this.name}: WhatsApp Web QR Code needed!`);
                     const qrcode = require('qrcode-terminal');
                     qrcode.generate(qr, {small: true});
                     if (config.admin && this.qrcount++ < this.qrretry) {
-                        const message = `WhatsApp Web requires QR Code authentication: ${qr}`;
+                        const message = `${this.name}: WhatsApp Web requires QR Code authentication: ${qr}`;
                         const hash = this.getHash(time, config.admin, message);
                         this.parent.queue.requeue([{hash, number: config.admin, message, consumer: 'sms'}]);
                     }
                 }
             })
             .on('ready', () => {
-                console.log('WhatsApp Web is ready...');
+                console.log(`${this.name}: WhatsApp Web is ready...`);
                 this.connected = true;
                 /**
                  * {
@@ -109,18 +225,20 @@ class WAWeb extends ChatConsumer {
                  */
                 this.info = this.client.info;
                 this.terms = this.storage.get(this.STOR_WA_TERMS, this.info.wid.user);
-                this.parent.onState(this);
-                this.migrateStorage(this.numbers);
-                this.migrateStorage(this.terms);
-                console.log('WhatsApp Web:', this.info.pushname, this.info.wid.user);
+                console.log(`${this.name}: WhatsApp Web id is ${this.info.wid.user} (${this.info.pushname})`);
+                if (typeof config.onState === 'function') {
+                    config.onState(this);
+                }
             })
             .on('authenticated', () => {
-                console.log('WhatsApp Web is authenticated...');
+                console.log(`${this.name}: WhatsApp Web is authenticated...`);
             })
             .on('disconnected', () => {
                 this.connected = false;
                 this.qrcount = 0
-                this.parent.onState(this);
+                if (typeof config.onState === 'function') {
+                    config.onState(this);
+                }
             })
             .on('message', msg => {
                 if (msg.body) {
@@ -132,7 +250,7 @@ class WAWeb extends ChatConsumer {
                         const number = '+' + contact.number;
                         const hash = this.getHash(time, number, msg.body);
                         const data = {date: time, number, message: msg.body, hash};
-                        this.parent.getApp().log('WAW: New message %s', JSON.stringify(data));
+                        this.parent.getApp().log(`${this.name}: WAW: New message %s`, JSON.stringify(data));
                         this.parent.onMessage(data);
                     })
                     .catch(err => console.error(err));
@@ -158,15 +276,19 @@ class WAWeb extends ChatConsumer {
                         data.code = config['ack-success'] !== undefined ? config['ack-success'] : ack;
                         data.sent = info.ack.sent;
                         data.received = info.ack.received;
-                        this.parent.getApp().log('WAW: Message ack %s', JSON.stringify(data));
+                        this.parent.getApp().log(`${this.name}: WAW: Message ack %s`, JSON.stringify(data));
                         this.parent.onReport(data);
                         delete this.messages[msg.id.id];
                     }
                 }
             })
-            .initialize()
         ;
         this.createBroadcastQueue();
+    }
+
+    initialize() {
+        console.log(`${this.name}: WhatsApp Web is initializing...`);
+        return this.client.initialize();
     }
 
     /**
@@ -334,27 +456,6 @@ class WAWeb extends ChatConsumer {
     }
 
     /**
-     * @param {ChatContact} storage Contact storage
-     */
-    migrateStorage(storage) {
-        const filename = path.join(this.workdir, `${storage.name}.json`);
-        if (fs.existsSync(filename)) {
-            return new Promise((resolve, reject) => {
-                const datas = JSON.parse(fs.readFileSync(filename));
-                if (Array.isArray(datas)) {
-                    for (const nr of datas) {
-                        storage.add(nr);
-                    }
-                }
-                fs.renameSync(filename, path.join(this.workdir, `${storage.name}~.json`));
-                resolve();
-            });
-        } else {
-            return Promise.resolve();
-        }
-    }
-
-    /**
      * No operation.
      *
      * @returns {Promise<void>}
@@ -479,4 +580,4 @@ class WAWeb extends ChatConsumer {
     }
 }
 
-module.exports = WAWeb;
+module.exports = WAWebChat;

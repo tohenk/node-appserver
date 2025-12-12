@@ -57,7 +57,7 @@ class SMSGateway extends ChatConsumer {
                         if (config.group) {
                             this.io.emit('group', config.group);
                         }
-                        this.parent.onState(this);
+                        this.parent.onState();
                     }
                 })
                 .on('message', (hash, number, message, time) => {

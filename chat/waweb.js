@@ -118,7 +118,7 @@ class WAWebChat extends ChatConsumer {
         if (!handler) {
             handler = this.wawebs.filter(waweb => waweb.connected && waweb.accept === undefined);
         }
-        if (handler.length === 0) {
+        if (!handler.length) {
             return Promise.resolve(false);
         }
         const idx = Math.floor(Math.random() * (handler.length - 1));
@@ -177,7 +177,7 @@ class WAWeb {
         this.storage = config.storage;
         this.numbers = this.storage.get(this.STOR_WA_NUMBERS);
         this.workdir = config.workdir;
-        //fs.mkdirSync(this.workdir, {recursive: true});
+        this.accept = config.accept;
         /** @type {string} */
         this.eula = config.eula !== undefined ? config.eula :
             'To improve user experience for our services, we will send the message through this channel.\nReply with *YES* to agree.';
@@ -192,6 +192,7 @@ class WAWeb {
             this.delay = config.delay;
         }
         this.bdelay = config['broadcast-delay'] || [60000, 120000]; // 1-2 minutes
+        this.bcooldown = config['broadcast-cooldown']; // last broadcast time delay, number of messages sent, cooldown time
         const opts = {
             authStrategy: new LocalAuth({clientId: this.name, dataPath: this.workdir}),
             webVersionCache: {path: path.join(this.workdir, 'cache')}
@@ -295,7 +296,23 @@ class WAWeb {
      * Create broadcast message queue dispatcher.
      */
     createBroadcastQueue() {
+        const interval = () => {
+            if (Array.isArray(this.bcooldown) && this.bcnt >= this.bcooldown[1]) {
+                const now = new Date();
+                if (now.getTime() < this.blast.getTime() + this.bcooldown[0]) {
+                    console.log(`${this.name}: WhatsApp Web is cooling down for ${this.bcooldown[2]/1000}s...`);
+                    this.bcnt = 0;
+                    return this.bcooldown[2];
+                }
+            }
+            return this.bwait;
+        }
         const delay = () => {
+            if (this.bcnt === undefined) {
+                this.bcnt = 0;
+            }
+            this.bcnt++;
+            this.blast = new Date();
             this.bwait = this.getDelay(this.bdelay);
         }
         /** @type {Queue} */
@@ -309,7 +326,7 @@ class WAWeb {
             this.sendChat(queue.contact, queue.msg, queue.flags)
                 .then(() => f())
                 .catch(err => f(err));
-        }, () => this.isTime('btime', this.bwait, delay));
+        }, () => this.isTime('btime', interval, delay));
     }
 
     getState() {
@@ -395,7 +412,7 @@ class WAWeb {
             // is eula need to send?
             ['eula', w => Promise.resolve(w.getRes('chat') ? false : !this.terms.exist(this.getContactNumber(contact))), w => !w.getRes('chat')],
             // send message
-            ['send', w => this.sendMsg(contact, msg, {...options, info: w.getRes('eula') ? this.eula : null})],
+            ['send', w => this.sendMsg(contact, msg, {...options, info: w.getRes('eula') ? this.eula : null, typing: w.getRes('chat')})],
             // wait a moment
             ['delay', w => this.noop(), w => w.getRes('send')],
             // save eula send state
@@ -413,6 +430,7 @@ class WAWeb {
      * @param {object|null} options Message options
      * @param {Attachment} options.attachment Message attachment
      * @param {string} options.info Additional message to append to original message
+     * @param {boolean} options.typing Send typing before send the message
      * @returns {Promise<boolean>}
      */
     sendMsg(contact, msg, options = null) {
@@ -431,8 +449,11 @@ class WAWeb {
             }
         }
         return Work.works([
-            [w => this.client.sendMessage(contact, message, params)],
-            [w => Promise.resolve(this.saveMsg(w.getRes(0), msg)), w => w.getRes(0)],
+            ['chat', w => this.client.getChatById(contact), w => options.typing && !options.attachment],
+            ['typing', w => w.getRes('chat').sendStateTyping(), w => w.getRes('chat')],
+            ['sleep', w => this.sleep(1000), w => w.getRes('chat')],
+            ['send', w => this.client.sendMessage(contact, message, params)],
+            ['store', w => Promise.resolve(this.saveMsg(w.getRes('send'), msg)), w => w.getRes('send')],
         ]);
     }
 
@@ -523,14 +544,17 @@ class WAWeb {
      * Check if time is due.
      *
      * @param {string} name Time identifier
-     * @param {number} interval Interval
-     * @param {any} cb On due callback
+     * @param {number|Function} interval Interval
+     * @param {Function} cb On due callback
      * @returns {boolean}
      */
     isTime(name, interval, cb) {
         const now = new Date();
         /** @type {Date} */
         const time = this[name];
+        if (typeof interval === 'function') {
+            interval = interval();
+        }
         if (time === undefined || (now.getTime() > time.getTime() + interval)) {
             this[name] = now;
             if (typeof cb === 'function') {

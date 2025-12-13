@@ -83,7 +83,7 @@ class ChatGateway extends Bridge {
         const pptrCfg = cfg => {
             const pptr = this.getConfig('puppeteer');
             if (pptr && cfg.puppeteer === undefined) {
-                cfg.puppeteer = pptr;
+                cfg.puppeteer = {...pptr};
             }
         }
         if (config) {

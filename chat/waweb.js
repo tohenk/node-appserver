@@ -102,12 +102,12 @@ class WAWebChat extends ChatConsumer {
     canConsume(msg, flags) {
         let handler;
         // if message is a special type, check for handler which can accept it
-        if (flags.TYPE) {
+        if (flags.type) {
             handler = this.wawebs
                 .filter(waweb => waweb.connected &&
                     (
-                        (Array.isArray(waweb.accept) && waweb.accept.includes(flags.TYPE)) ||
-                        waweb.accept === flags.TYPE
+                        (Array.isArray(waweb.accept) && waweb.accept.includes(flags.type)) ||
+                        waweb.accept === flags.type
                     )
                 );
             if (!handler.length) {
@@ -288,8 +288,22 @@ class WAWeb {
     }
 
     initialize() {
-        console.log(`${this.name}: WhatsApp Web is initializing...`);
-        return this.client.initialize();
+        return Work.works([
+            [w => Promise.resolve(console.log(`${this.name}: WhatsApp Web is initializing...`))],
+            [w => Promise.resolve(
+                this.client.on('ready', () => {
+                    this.client.pupPage.evaluate(() => {
+                        if (window.Store.ContactMethods && typeof window.Store.ContactMethods.getIsMyContact !== 'function') {
+                            window.Store.ContactMethods = {
+                                ...window.Store.ContactMethods,
+                                ...window.require('WAWebFrontendContactGetters'),
+                            }
+                        }
+                    });
+                })
+            )],
+            [w => this.client.initialize()],
+        ]);
     }
 
     /**

@@ -53,11 +53,12 @@ class WAWebChat extends ChatConsumer {
         this.storage = new ChatStorage('waweb', this.workdir);
         let seq = 0;
         for (const cfg of Array.isArray(config['']) ? config[''] : [config]) {
+            seq++;
             if (cfg.enabled !== undefined && !cfg.enabled) {
                 continue;
             }
             this.wawebs.push(new WAWeb({
-                name: `waweb-${++seq}`,
+                name: `waweb-${seq}`,
                 parent: this.parent,
                 storage: this.storage,
                 workdir: this.workdir,
@@ -69,7 +70,7 @@ class WAWebChat extends ChatConsumer {
             waweb.initialize()
                 .then(() => q.next())
                 .catch(err => {
-                    console.error(err);
+                    console.error(`${this.name}: WhatsApp Web initialization error: ${err}!`);
                     q.next();
                 });
         });
@@ -114,7 +115,7 @@ class WAWebChat extends ChatConsumer {
                 handler = undefined;
             }
         }
-        // fallback to wilcard handler
+        // fallback to wildcard handler
         if (!handler) {
             handler = this.wawebs.filter(waweb => waweb.connected && waweb.accept === undefined);
         }
@@ -204,7 +205,7 @@ class WAWeb {
         this.client
             .on('qr', qr => {
                 if (this.isTime('qrnotify', this.qrinterval)) {
-                    console.log(`${this.name}: WhatsApp Web QR Code needed!`);
+                    console.log(`${this.name}: WhatsApp Web QR Code needed (${new Date()})!`);
                     const qrcode = require('qrcode-terminal');
                     qrcode.generate(qr, {small: true});
                     if (config.admin && this.qrcount++ < this.qrretry) {

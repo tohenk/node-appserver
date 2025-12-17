@@ -33,7 +33,7 @@ class ChatFactory {
 
     /** @type {ChatGateway} */
     parent = null
-    /** @type {ChatConsumer} */
+    /** @type {typeof ChatConsumer} */
     factory = null
     /** @type {object} */
     config = null
@@ -63,23 +63,30 @@ class ChatFactory {
             if (!this.instance instanceof ChatConsumer) {
                 throw new Error(`${this.instance.constructor.name} must be a sub class of ChatConsumer.`);
             }
+            this.instance.priority = this.config.priority;
             this.instance.initialize(this.config);
             if (this.config['restart-every']) {
                 setTimeout(() => {
-                    let idx = this.parent.consumers.indexOf(this.instance);
+                    const idx = this.parent.consumers.indexOf(this.instance);
                     if (idx >= 0) {
                         const delay = this.config['restart-delay'] || 60000;
                         setTimeout(() => {
-                            this.parent.consumers.splice(idx);
-                            const state = this.instance.getState();
-                            this.instance.close();
+                            let state;
+                            this.parent.consumers.splice(idx, 1);
+                            try {
+                                state = this.instance.getState();
+                                this.instance.close();
+                            }
+                            catch (err) {
+                                console.error(`Error closing ${this.factory.name}: ${err}!`);
+                            }
                             this.instance = null;
                             this.create();
                             if (state) {
                                 this.instance.setState(state);
                             }
                         }, delay);
-                        console.log('Restart for %s scheduled in %d s', this.factory.name, delay / 1000);
+                        console.log(`Restart for ${this.factory.name} scheduled in ${delay / 1000}s...`);
                     }
                 }, this.config['restart-every']);
             }

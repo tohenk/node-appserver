@@ -28,7 +28,7 @@ const Queue = require('@ntlab/work/queue');
 const Bridge = require('.');
 const { ChatFactory, ChatConsumer } = require('../chat');
 const SMSGateway = require('../chat/smsgw');
-const WAWeb = require('../chat/waweb');
+const WAWebChat = require('../chat/waweb');
 
 /**
  * @typedef {Object} ChatMessage
@@ -100,12 +100,18 @@ class ChatGateway extends Bridge {
 
     setupWAWeb(config) {
         if (config && (config.enabled === undefined || config.enabled)) {
-            this.createFactory({factory: WAWeb, config});
+            if (config.priority === undefined) {
+                config.priority = 10;
+            }
+            this.createFactory({factory: WAWebChat, config});
         }
     }
 
     setupSMSGateway(config) {
         if (config && (config.enabled === undefined || config.enabled) && config.url) {
+            if (config.priority === undefined) {
+                config.priority = 20;
+            }
             this.createFactory({factory: SMSGateway, config});
         }
     }
@@ -212,9 +218,13 @@ class ChatGateway extends Bridge {
      * @returns {Promise<undefined>}
      */
     consume(msg, flags) {
+        const consumers = this.consumers.sort((a, b) => a.priority - b.priority);
+        if (!consumers.length) {
+            return Promise.reject(`No handler for ${JSON.stringify(msg)}!`);
+        }
         return new Promise((resolve, reject) => {
             let handler;
-            const q = new Queue([...this.consumers], consumer => {
+            const q = new Queue([...consumers], consumer => {
                 if (consumer.canHandle(msg)) {
                     this.getApp().log('CGW: %s handling %s...', consumer.constructor.name, JSON.stringify(msg));
                     consumer.canConsume(msg, flags)

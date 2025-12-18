@@ -23,6 +23,7 @@
  */
 
 const ChatGateway = require('../bridge/chat');
+const Util = require('../lib/util');
 
 /**
  * Chat factory.
@@ -69,7 +70,7 @@ class ChatFactory {
                 setTimeout(() => {
                     const idx = this.parent.consumers.indexOf(this.instance);
                     if (idx >= 0) {
-                        const delay = this.config['restart-delay'] || 60000;
+                        const delay = Util.ms(this.config['restart-delay'] || 60);
                         setTimeout(() => {
                             this.parent.consumers.splice(idx, 1);
                             const state = this.instance.getState();
@@ -92,9 +93,9 @@ class ChatFactory {
                                 f();
                             }
                         }, delay);
-                        console.log(`Restart for ${this.factory.name} scheduled in ${delay / 1000}s...`);
+                        console.log(`Restart for ${this.factory.name} scheduled in ${delay}s...`);
                     }
-                }, this.config['restart-every']);
+                }, Util.ms(this.config['restart-every']));
             }
             this.parent.consumers.push(this.instance);
         }

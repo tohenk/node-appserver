@@ -27,6 +27,7 @@ const path = require('path');
 const mime = require('mime-types');
 const Work = require('@ntlab/work/work');
 const Queue = require('@ntlab/work/queue');
+const Util = require('../lib/util');
 const { ChatConsumer } = require('.');
 const { ChatStorage } = require('./storage');
 const { Client, LocalAuth, Message, MessageAck, MessageMedia } = require('whatsapp-web.js');
@@ -184,6 +185,8 @@ class WAWeb {
     messages = {}
     /** @type {ChatStorage} */
     storage = null
+    /** @type {import('../bridge/chat')} */
+    parent = null
 
     constructor(config) {
         this.name = config.name;
@@ -197,17 +200,17 @@ class WAWeb {
         this.eula = config.eula !== undefined ? config.eula :
             'To improve user experience for our services, we will send the message through this channel.\nReply with *YES* to agree.';
         /** @type {number} */
-        this.qrinterval = config['qr-notify-interval'] || 600000; // 10 minutes
+        this.qrinterval = Util.ms(config['qr-notify-interval'] || 600); // 10 minutes
         /** @type {number} */
         this.qrretry = config['qr-notify-retry'] || 3;
         if (config.delay !== undefined) {
             if (!(typeof config.delay === 'number' || Array.isArray(config.delay))) {
                 throw new Error('Delay only accept number or array of [min, max]!');
             }
-            this.delay = config.delay;
+            this.delay = Util.ms(config.delay);
         }
-        this.bdelay = config['broadcast-delay'] || [60000, 120000]; // 1-2 minutes
-        this.bcooldown = config['broadcast-cooldown']; // last broadcast time delay, number of messages sent, cooldown time
+        this.bdelay = Util.ms(config['broadcast-delay'] || [60, 120]); // 1-2 minutes
+        this.bcooldown = config['broadcast-cooldown']; // number of messages sent, last broadcast time delay, cooldown time
         const opts = {
             authStrategy: new LocalAuth({clientId: this.name, dataPath: this.workdir}),
             webVersionCache: {path: path.join(this.workdir, 'cache')}
@@ -351,12 +354,12 @@ class WAWeb {
      */
     createBroadcastQueue() {
         const interval = () => {
-            if (Array.isArray(this.bcooldown) && this.bcnt >= this.bcooldown[1]) {
+            if (Array.isArray(this.bcooldown) && this.bcnt >= this.bcooldown[0]) {
                 const now = new Date();
-                if (now.getTime() < this.blast.getTime() + this.bcooldown[0]) {
-                    console.log(`${this.name}: WhatsApp Web is cooling down for ${this.bcooldown[2]/1000}s...`);
+                if (now.getTime() < this.blast.getTime() + Util.ms(this.bcooldown[1])) {
+                    console.log(`${this.name}: WhatsApp Web is cooling down for ${this.bcooldown[2]}s...`);
                     this.bcnt = 0;
-                    return this.bcooldown[2];
+                    return Util.ms(this.bcooldown[2]);
                 }
             }
             return this.bwait;

@@ -70,10 +70,15 @@ class WAWebChat extends ChatConsumer {
             waweb.initialize()
                 .then(() => q.next())
                 .catch(err => {
-                    console.error(`${this.name}: WhatsApp Web initialization error: ${err}!`);
+                    console.error(`${waweb.name}: WhatsApp Web initialization error: ${err}!`);
                     q.next();
                 });
         });
+        this.onRestart = cb => {
+            this.close()
+                .then(() => cb())
+                .catch(err => console.error(err));
+        }
     }
 
     createWorkdir(dir) {
@@ -145,9 +150,17 @@ class WAWebChat extends ChatConsumer {
     }
 
     close() {
-        for (const waweb of this.wawebs) {
-            waweb.close();
-        }
+        return new Promise((resolve, reject) => {
+            const q = new Queue([...this.wawebs], waweb => {
+                waweb.close()
+                    .then(() => q.next())
+                    .catch(err => {
+                        console.error(`${waweb.name}: WhatsApp Web close error: ${err}!`);
+                        q.next();
+                    });
+            });
+            q.once('done', () => resolve());
+        });
     }
 }
 
@@ -380,7 +393,10 @@ class WAWeb {
     }
 
     close() {
-        this.client.destroy();
+        if (this.client && this.client.pupBrowser) {
+            return this.client.destroy();
+        }
+        return Promise.resolve();
     }
 
     /**

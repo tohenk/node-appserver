@@ -71,19 +71,25 @@ class ChatFactory {
                     if (idx >= 0) {
                         const delay = this.config['restart-delay'] || 60000;
                         setTimeout(() => {
-                            let state;
                             this.parent.consumers.splice(idx, 1);
-                            try {
-                                state = this.instance.getState();
-                                this.instance.close();
+                            const state = this.instance.getState();
+                            const f = () => {
+                                this.instance = null;
+                                this.create();
+                                if (state) {
+                                    this.instance.setState(state);
+                                }
                             }
-                            catch (err) {
-                                console.error(`Error closing ${this.factory.name}: ${err}!`);
-                            }
-                            this.instance = null;
-                            this.create();
-                            if (state) {
-                                this.instance.setState(state);
+                            if (typeof this.instance.onRestart === 'function') {
+                                this.instance.onRestart(f);
+                            } else {
+                                try {
+                                    this.instance.close();
+                                }
+                                catch (err) {
+                                    console.error(`Error closing ${this.factory.name}: ${err}!`);
+                                }
+                                f();
                             }
                         }, delay);
                         console.log(`Restart for ${this.factory.name} scheduled in ${delay / 1000}s...`);

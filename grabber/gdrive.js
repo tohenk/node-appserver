@@ -125,7 +125,7 @@ class GDriveFileGrabber {
                                 const clicker = await dpage.waitForSelector('#uc-download-link');
                                 if (clicker) {
                                     await clicker.click();
-                                    await dpage.waitForTimeout(opdelay);
+                                    await this.sleep(opdelay);
                                 }
                             }
                         }
@@ -134,7 +134,7 @@ class GDriveFileGrabber {
                 }
                 f();
             });
-            await page.waitForTimeout(opdelay);
+            await this.sleep(opdelay);
         }
         catch (e) {
             err = e;
@@ -152,6 +152,12 @@ class GDriveFileGrabber {
             }
         }
         return {success: fs.existsSync(this.options.outfile), ...this.state};
+    }
+
+    sleep(ms) {
+        return new Promise((resolve, reject) => {
+            setTimeout(() => resolve(), ms);
+        });
     }
 
     asMeta(data) {

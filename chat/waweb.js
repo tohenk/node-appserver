@@ -192,6 +192,7 @@ class WAWeb {
         this.numbers = this.storage.get(this.STOR_WA_NUMBERS);
         this.workdir = config.workdir;
         this.accept = config.accept;
+        this.cleanLock = config.cleanLock !== undefined ? config.cleanLock : true;
         /** @type {string} */
         this.eula = config.eula !== undefined ? config.eula :
             'To improve user experience for our services, we will send the message through this channel.\nReply with *YES* to agree.';
@@ -316,6 +317,31 @@ class WAWeb {
                     });
                 })
             )],
+            [w => new Promise((resolve, reject) => {
+                const authStrategy = this.client.authStrategy;
+                if (authStrategy._beforeBrowserInitialized === undefined) {
+                    authStrategy._beforeBrowserInitialized = authStrategy.beforeBrowserInitialized;
+                    authStrategy.beforeBrowserInitialized = async () => {
+                        await authStrategy._beforeBrowserInitialized();
+                        if (authStrategy.userDataDir && !this.constructor.isClean(authStrategy.userDataDir)) {
+                            console.log(`${this.name}: WhatsApp Web is cleaning lock in ${authStrategy.userDataDir}...`);
+                            const files = fs.readdirSync(authStrategy.userDataDir);
+                            for (const file of files) {
+                                if (file.match('Singleton')) {
+                                    const filePath = path.join(authStrategy.userDataDir, file);
+                                    try {
+                                        fs.unlinkSync(filePath);
+                                    }
+                                    catch (err) {
+                                        console.error(`Unable to unlink ${filePath}: ${err}!`);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                resolve();
+            }), w => this.cleanLock],
             [w => this.client.initialize()],
         ]);
     }
@@ -632,6 +658,17 @@ class WAWeb {
      */
     getRnd(min, max) {
         return Math.floor(Math.random() * (max - min)) + min;
+    }
+
+    static isClean(dir) {
+        if (this.locks === undefined) {
+            this.locks = [];
+        }
+        if (this.locks.includes(dir)) {
+            return true;
+        }
+        this.locks.push(dir);
+        return false;
     }
 }
 

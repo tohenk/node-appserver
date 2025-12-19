@@ -30,7 +30,7 @@ const Queue = require('@ntlab/work/queue');
 const Util = require('../lib/util');
 const { ChatConsumer } = require('.');
 const { ChatStorage } = require('./storage');
-const { Client, LocalAuth, Message, MessageAck, MessageMedia } = require('whatsapp-web.js');
+const { Client, Events, LocalAuth, Message, MessageAck, MessageMedia } = require('whatsapp-web.js');
 
 /**
  * @typedef {Object} Attachment
@@ -220,7 +220,7 @@ class WAWeb {
         }
         this.client = new Client(opts);
         this.client
-            .on('qr', qr => {
+            .on(Events.QR_RECEIVED, qr => {
                 if (this.isTime('qrnotify', this.qrinterval)) {
                     console.log(`${this.name}: WhatsApp Web QR Code needed (${new Date()})!`);
                     const qrcode = require('qrcode-terminal');
@@ -232,7 +232,7 @@ class WAWeb {
                     }
                 }
             })
-            .on('ready', () => {
+            .on(Events.READY, () => {
                 console.log(`${this.name}: WhatsApp Web is ready...`);
                 this.connected = true;
                 /**
@@ -249,17 +249,18 @@ class WAWeb {
                     config.onState(this);
                 }
             })
-            .on('authenticated', () => {
+            .on(Events.AUTHENTICATED, () => {
                 console.log(`${this.name}: WhatsApp Web is authenticated...`);
             })
-            .on('disconnected', () => {
+            .on(Events.DISCONNECTED, () => {
+                console.log(`${this.name}: WhatsApp Web is disconnected...`);
                 this.connected = false;
                 this.qrcount = 0
                 if (typeof config.onState === 'function') {
                     config.onState(this);
                 }
             })
-            .on('message', msg => {
+            .on(Events.MESSAGE_RECEIVED, msg => {
                 if (msg.body) {
                     const time = new Date();
                     Work.works([
@@ -275,7 +276,7 @@ class WAWeb {
                     .catch(err => console.error(err));
                 }
             })
-            .on('message_ack', (msg, ack) => {
+            .on(Events.MESSAGE_ACK, (msg, ack) => {
                 const info = this.messages[msg.id.id];
                 if (info) {
                     const time = new Date();
@@ -309,7 +310,7 @@ class WAWeb {
         return Work.works([
             [w => Promise.resolve(console.log(`${this.name}: WhatsApp Web is initializing...`))],
             [w => Promise.resolve(
-                this.client.on('ready', () => {
+                this.client.on(Events.READY, () => {
                     this.client.pupPage.evaluate(() => {
                         if (window.Store.ContactMethods && typeof window.Store.ContactMethods.getIsMyContact !== 'function') {
                             window.Store.ContactMethods = {
@@ -374,6 +375,7 @@ class WAWeb {
         }
         /** @type {Queue} */
         this.bq = new Queue([], queue => {
+            console.log(`${this.name}: Broadcast ${JSON.stringify(queue.msg)}`);
             const f = err => {
                 if (err) {
                     console.error(err);
@@ -383,7 +385,7 @@ class WAWeb {
             this.sendChat(queue.contact, queue.msg, queue.flags)
                 .then(() => f())
                 .catch(err => f(err));
-        }, () => this.isTime('btime', interval, delay));
+        }, () => this.connected && this.isTime('btime', interval, delay));
     }
 
     getState() {

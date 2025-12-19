@@ -93,7 +93,7 @@ class ChatFactory {
                                 f();
                             }
                         }, delay);
-                        console.log(`Restart for ${this.factory.name} scheduled in ${delay}s...`);
+                        console.log(`Restart for ${this.factory.name} scheduled in ${delay / 1000}s...`);
                     }
                 }, Util.ms(this.config['restart-every']));
             }

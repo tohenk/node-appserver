@@ -358,16 +358,21 @@ class WAWeb {
             if (Array.isArray(this.bcooldown) && this.bcnt >= this.bcooldown[0]) {
                 const now = new Date();
                 if (now.getTime() < this.blast.getTime() + Util.ms(this.bcooldown[1])) {
-                    console.log(`${this.name}: WhatsApp Web is cooling down for ${this.bcooldown[2]}s...`);
-                    this.bcnt = 0;
+                    if (!this.bcool) {
+                        this.bcool = true;
+                        console.log(`${this.name}: WhatsApp Web is cooling down for ${this.bcooldown[2]}s...`);
+                    }
                     return Util.ms(this.bcooldown[2]);
                 }
             }
             return this.bwait;
         }
-        const delay = () => {
-            if (this.bcnt === undefined) {
+        const callback = () => {
+            if (this.bcnt === undefined || this.bcool) {
                 this.bcnt = 0;
+                if (this.bcool) {
+                    this.bcool = false;
+                }
             }
             this.bcnt++;
             this.blast = new Date();
@@ -385,7 +390,7 @@ class WAWeb {
             this.sendChat(queue.contact, queue.msg, queue.flags)
                 .then(() => f())
                 .catch(err => f(err));
-        }, () => this.connected && this.isTime('btime', interval, delay));
+        }, () => this.connected && this.isTime('btime', interval, callback));
     }
 
     getState() {

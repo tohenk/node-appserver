@@ -355,12 +355,14 @@ class WAWeb {
     createBroadcastQueue() {
         const interval = () => {
             if (Array.isArray(this.bcooldown) && this.bcnt >= this.bcooldown[0]) {
-                const now = new Date();
-                if (now.getTime() < this.blast.getTime() + Util.ms(this.bcooldown[1])) {
-                    if (!this.bcool) {
+                if (!this.bcool) {
+                    const now = new Date();
+                    if (now.getTime() < this.blast.getTime() + Util.ms(this.bcooldown[1])) {
                         this.bcool = true;
                         console.log(`${this.name}: WhatsApp Web is cooling down for ${this.bcooldown[2]}s...`);
                     }
+                }
+                if (this.bcool) {
                     return Util.ms(this.bcooldown[2]);
                 }
             }

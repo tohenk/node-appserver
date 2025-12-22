@@ -262,16 +262,15 @@ class WAWeb {
             })
             .on(Events.MESSAGE_RECEIVED, msg => {
                 if (msg.body) {
-                    const time = new Date();
                     Work.works([
-                        [w => Promise.resolve(msg.getContact())]
+                        ['contact', w => msg.getContact()],
+                        ['chat', w => msg.getChat()],
+                        ['notify', w => Promise.resolve(this.notifyNewMessage(w.getRes('contact').number, msg.body))],
+                        ['delay', w => this.sleep(1000)],
+                        ['seen', w => w.getRes('chat').sendSeen()],
                     ])
-                    .then(contact => {
-                        const number = '+' + contact.number;
-                        const hash = this.getHash(time, number, msg.body);
-                        const data = {date: time, number, message: msg.body, hash};
-                        this.parent.getApp().log(`${this.name}: WAW: New message %s`, JSON.stringify(data));
-                        this.parent.onMessage(data);
+                    .then(seen => {
+                        console.log(`${this.name}: Message ${msg.id._serialized} set seen: ${seen ? 'OK' : 'FAILED'}!`);
                     })
                     .catch(err => console.error(err));
                 }
@@ -407,6 +406,21 @@ class WAWeb {
         if (Array.isArray(state.broadcasts)) {
             this.bq.requeue(state.broadcasts);
         }
+    }
+
+    /**
+     * Notify a new message arrival.
+     *
+     * @param {string} from Message sender
+     * @param {string} message Message body
+     */
+    notifyNewMessage(from, message) {
+        const time = new Date();
+        const number = '+' + from;
+        const hash = this.getHash(time, number, message);
+        const data = {date: time, number, message, hash};
+        this.parent.getApp().log(`${this.name}: WAW: New message %s`, JSON.stringify(data));
+        this.parent.onMessage(data);
     }
 
     /**

@@ -207,8 +207,8 @@ class WAWeb {
             if (!(typeof config.delay === 'number' || Array.isArray(config.delay))) {
                 throw new Error('Delay only accept number or array of [min, max]!');
             }
-            this.delay = Util.ms(config.delay);
         }
+        this.delay = Util.ms(config.delay || [1, 2]); // 1-2 seconds
         this.bdelay = Util.ms(config['broadcast-delay'] || [60, 120]); // 1-2 minutes
         this.bcooldown = config['broadcast-cooldown']; // number of messages sent, last broadcast time delay, cooldown time
         const opts = {
@@ -266,7 +266,7 @@ class WAWeb {
                         ['contact', w => msg.getContact()],
                         ['chat', w => msg.getChat()],
                         ['notify', w => Promise.resolve(this.notifyNewMessage(w.getRes('contact').number, msg.body))],
-                        ['delay', w => this.sleep(1000)],
+                        ['noop', w => this.noop()],
                         ['seen', w => w.getRes('chat').sendSeen()],
                     ])
                     .then(seen => {
@@ -496,8 +496,6 @@ class WAWeb {
             ['eula', w => Promise.resolve(w.getRes('chat') ? false : !this.terms.exist(this.getContactNumber(contact))), w => !w.getRes('chat')],
             // send message
             ['send', w => this.sendMsg(contact, msg, {...options, info: w.getRes('eula') ? this.eula : null, typing: w.getRes('chat')})],
-            // wait a moment
-            ['delay', w => this.noop(), w => w.getRes('send')],
             // save eula send state
             ['save', w => Promise.resolve(this.terms.add(this.getContactNumber(contact))), w => w.getRes('send') && w.getRes('eula')],
             // done
@@ -532,9 +530,11 @@ class WAWeb {
             }
         }
         return Work.works([
-            ['chat', w => this.client.getChatById(contact), w => options.typing && !options.attachment],
-            ['typing', w => w.getRes('chat').sendStateTyping(), w => w.getRes('chat')],
-            ['sleep', w => this.sleep(1000), w => w.getRes('chat')],
+            ['chat', w => this.client.getChatById(contact)],
+            ['send-seen', w => w.getRes('chat').sendSeen(), w => w.getRes('chat') && w.getRes('chat').unreadCount > 0],
+            ['typing', w => w.getRes('chat').sendStateTyping(), w => w.getRes('chat') && options.typing],
+            ['noop', w => this.noop(), w => w.getRes('chat') && options.typing],
+            ['stop-typing', w => w.getRes('chat').clearState(), w => w.getRes('chat') && options.typing],
             ['send', w => this.client.sendMessage(contact, message, params)],
             ['store', w => Promise.resolve(this.saveMsg(w.getRes('send'), msg)), w => w.getRes('send')],
         ]);

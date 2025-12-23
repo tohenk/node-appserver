@@ -261,19 +261,17 @@ class WAWeb {
                 }
             })
             .on(Events.MESSAGE_RECEIVED, msg => {
-                if (msg.body) {
-                    Work.works([
-                        ['contact', w => msg.getContact()],
-                        ['chat', w => msg.getChat()],
-                        ['notify', w => Promise.resolve(this.notifyNewMessage(w.getRes('contact').number, msg.body))],
-                        ['noop', w => this.noop()],
-                        ['seen', w => w.getRes('chat').sendSeen()],
-                    ])
-                    .then(seen => {
-                        console.log(`${this.name}: Message ${msg.id._serialized} set seen: ${seen ? 'OK' : 'FAILED'}!`);
-                    })
-                    .catch(err => console.error(err));
-                }
+                Work.works([
+                    ['contact', w => msg.getContact()],
+                    ['chat', w => msg.getChat()],
+                    ['notify', w => Promise.resolve(this.notifyNewMessage(w.getRes('contact').number, msg.body)), w => msg.body],
+                    ['noop', w => this.noop()],
+                    ['seen', w => w.getRes('chat').sendSeen()],
+                ])
+                .then(seen => {
+                    console.log(`${this.name}: Message ${msg.id._serialized} set seen: ${seen ? 'OK' : 'FAILED'}!`);
+                })
+                .catch(err => console.error(err));
             })
             .on(Events.MESSAGE_ACK, (msg, ack) => {
                 const info = this.messages[msg.id.id];

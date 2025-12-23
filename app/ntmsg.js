@@ -318,8 +318,8 @@ class MessagingServer {
             this.log('SVR: %s: Query whos-online...', con.id);
             const users = this.getUsers(con.info.group);
             con.emit('whos-online', users);
-            for (let i = 0; i < users.length; i++) {
-                this.log('SVR: %s: User: %s, time: %d', con.id, users[i].uid, users[i].time);
+            if (users.length) {
+                this.log('SVR: %s: Users: %s', con.id, JSON.stringify(users));
             }
         });
         con.on('notification', data => {

@@ -11,7 +11,7 @@
     "xmpp"
   ],
   "dependencies": {
-    "@ntlab/ntlib": "^2.7.0",
+    "@ntlab/ntlib": "^2.8.0",
     "@ntlab/urllib": "^1.1.0",
     "@ntlab/work": "^2.5.0",
     "@xmpp/client": "^0.13.6",

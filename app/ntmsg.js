@@ -49,13 +49,16 @@ class MessagingServer {
     serverRoom = 'server'
     listenerRoom = 'listener'
     bridges = []
-    cmds = {}
 
     constructor(appserver, factory, config, options) {
         this.appserver = appserver;
         this.factory = factory;
         this.config = config || {};
         this.options = options || {};
+        this.cmd = new CommandHandler({
+            logger: this,
+            paths: [__dirname, path.dirname(this.appserver.config)]
+        });
         this.init();
     }
 
@@ -99,126 +102,35 @@ class MessagingServer {
         this.logger.log(...args);
     }
 
-    getPaths() {
-        return [__dirname, path.dirname(this.appserver.config)];
-    }
-
-    getCmd(config, args, values) {
-        return require('@ntlab/ntlib/command')(config, {
-            paths: this.getPaths(),
-            args: args,
-            values: values
-        });
-    }
-
-    execCmd(name, cmd, values) {
-        return new Promise((resolve, reject) => {
-            const p = cmd.exec(values);
-            p.on('message', data => {
-                if (typeof data === 'object' && data.type === 'Buffer' && Array.isArray(data.data)) {
-                    data = Buffer.from(data.data);
-                }
-                if (typeof data === 'object' && data.cmd) {
-                    switch (data.cmd) {
-                        case 'get-cookie':
-                            if (data.domain && data.path) {
-                                if (this.cookies && this.cookies[data.domain]) {
-                                    const cookies = {};
-                                    for (const cookiePath of Object.keys(this.cookies[data.domain])) {
-                                        if (data.path.startsWith(cookiePath)) {
-                                            Object.assign(cookies, this.cookies[data.domain][cookiePath]);
-                                        }
-                                    }
-                                    if (Object.keys(cookies).length) {
-                                        const cookie = [];
-                                        for (const k of Object.keys(cookies)) {
-                                            cookie.push(`${k}=${cookies[k]}`);
-                                        }
-                                        p.send({cookie});
-                                    }
-                                }
-                            }
-                            break;
-                        case 'set-cookie':
-                            /**
-                             * {
-                             *   '/': {Cookie1: 'Value1', Cookie2: 'Value2'
-                             * }
-                             */
-                            if (data.domain && data.cookie) {
-                                if (!this.cookies) {
-                                    this.cookies = {};
-                                }
-                                if (!this.cookies[data.domain]) {
-                                    this.cookies[data.domain] = {};
-                                }
-                                for (const cookiePath of Object.keys(data.cookie)) {
-                                    if (!this.cookies[data.domain][cookiePath]) {
-                                        this.cookies[data.domain][cookiePath] = {};
-                                    }
-                                    Object.assign(this.cookies[data.domain][cookiePath], data.cookie[cookiePath]);
-                                }
-                            }
-                            break;
-                    }
-                    data = null;
-                }
-                if (data) {
-                    console.log(`${name}: %s`, data);
-                }
-            });
-            p.on('exit', code => {
-                this.log(`${name}: Exit code %s...`, code);
-                resolve(code);
-            });
-            p.on('error', err => {
-                this.log(`${name}: ERR: %s...`, err);
-                reject(err);
-            });
-            p.stdout.on('data', line => {
-                const lines = util.cleanBuffer(line).split('\n');
-                for (let i = 0; i < lines.length; i++) {
-                    this.log(`${name}: 1> %s`, lines[i]);
-                }
-            });
-            p.stderr.on('data', line => {
-                const lines = util.cleanBuffer(line).split('\n');
-                for (let i = 0; i < lines.length; i++) {
-                    this.log(`${name}: 2> %s`, lines[i]);
-                }
-            });
-        });
-    }
-
     doCmd(group, name, args, data, callback = null) {
-        if (this.cmds[name] === undefined) {
-            this.cmds[name] = [];
+        if (this.cmd[name] === undefined) {
+            this.cmd[name] = [];
             if (this.config[name] !== undefined) {
-                const cmd = {cmd: this.getCmd(this.config[name], args)};
+                const cmd = {cmd: this.cmd.create(this.config[name], args)};
                 if (this.config[name].group) {
                     cmd.group = this.config[name].group;
                 }
-                this.cmds[name].push(cmd);
+                this.cmd[name].push(cmd);
                 console.log('Handle %s using %s...', name, cmd.cmd.bin ? cmd.cmd.bin : cmd.cmd.url);
             } else {
                 Object.values(this.config).forEach(cfg => {
                     if (cfg.type === name) {
-                        const cmd = {cmd: this.getCmd(cfg, args)};
+                        const cmd = {cmd: this.cmd.create(cfg, args)};
                         if (cfg.group) {
                             cmd.group = cfg.group;
                         }
-                        this.cmds[name].push(cmd);
+                        this.cmd[name].push(cmd);
                         console.log('Handle %s using %s...', name, cmd.cmd.bin ? cmd.cmd.bin : cmd.cmd.url);
                     }
                 });
             }
         }
-        if (this.cmds[name].length) {
-            const q = new Queue([...this.cmds[name]], cmd => {
+        if (this.cmd[name].length) {
+            const q = new Queue([...this.cmd[name]], cmd => {
                 if ((group && cmd.group !== group) || (!group && cmd.group)) {
                     q.next();
                 } else {
-                    this.execCmd(name, cmd.cmd, data)
+                    this.cmd.execute(name, cmd.cmd, data)
                         .then(() => q.next())
                         .catch(err => {
                             console.error(err);
@@ -489,6 +401,130 @@ class MessagingServer {
     doClose(server) {
         this.bridges.forEach(bridge => {
             bridge.finalize();
+        });
+    }
+}
+
+/**
+ * A CLI or HTTP command handler.
+ *
+ * @author Toha <tohenk@yahoo.com>
+ */
+class CommandHandler {
+
+    cookies = {}
+
+    constructor({logger, paths}) {
+        this.logger = logger;
+        this.paths = paths;
+    }
+
+    /**
+     * Create command from configuration.
+     *
+     * @param {object} config Configuration
+     * @param {string[]} args Argument placeholders
+     * @param {string[]} values Argument values
+     * @returns {import('@ntlab/ntlib/command')}
+     */
+    create(config, args, values) {
+        return require('@ntlab/ntlib/command')(config, {
+            paths: this.paths,
+            args,
+            values
+        });
+    }
+
+    /**
+     * Execute command.
+     *
+     * @param {string} name Command name
+     * @param {import('@ntlab/ntlib/command')} cmd Command object
+     * @param {string[]} values Argument values
+     * @returns {Promise<any>}
+     */
+    execute(name, cmd, values) {
+        return new Promise((resolve, reject) => {
+            const p = cmd.exec(values);
+            p.on('message', data => {
+                if (typeof data === 'object' && data.type === 'Buffer' && Array.isArray(data.data)) {
+                    data = Buffer.from(data.data);
+                }
+                if (typeof data === 'object' && data.cmd) {
+                    const res = {}, cookie = data.cookie;
+                    switch (data.cmd) {
+                        case 'request':
+                            res.headers = {
+                                'x-requested-with': 'XMLHttpRequest'
+                            }
+                            if (cookie && cookie.domain && cookie.path) {
+                                if (this.cookies && this.cookies[cookie.domain]) {
+                                    const cookies = {};
+                                    for (const cookiePath of Object.keys(this.cookies[cookie.domain])) {
+                                        if (cookie.path.startsWith(cookiePath)) {
+                                            Object.assign(cookies, this.cookies[cookie.domain][cookiePath]);
+                                        }
+                                    }
+                                    if (Object.keys(cookies).length) {
+                                        res.cookie = [];
+                                        for (const k of Object.keys(cookies)) {
+                                            res.cookie.push(`${k}=${cookies[k]}`);
+                                        }
+                                    }
+                                }
+                            }
+                            break;
+                        case 'response':
+                            if (cookie && cookie.domain && cookie.cookie) {
+                                /**
+                                 * {
+                                 *   '/': {Cookie1: 'Value1', Cookie2: 'Value2'
+                                 * }
+                                 */
+                                if (!this.cookies) {
+                                    this.cookies = {};
+                                }
+                                if (!this.cookies[cookie.domain]) {
+                                    this.cookies[cookie.domain] = {};
+                                }
+                                for (const cookiePath of Object.keys(cookie.cookie)) {
+                                    if (!this.cookies[cookie.domain][cookiePath]) {
+                                        this.cookies[cookie.domain][cookiePath] = {};
+                                    }
+                                    Object.assign(this.cookies[cookie.domain][cookiePath], cookie.cookie[cookiePath]);
+                                }
+                            }
+                            break;
+                    }
+                    data = null;
+                    if (Object.keys(res).length) {
+                        p.send(res);
+                    }
+                }
+                if (data) {
+                    console.log(`${name}: %s`, data);
+                }
+            });
+            p.on('exit', code => {
+                this.logger.log(`${name}: Exit code %s...`, code);
+                resolve(code);
+            });
+            p.on('error', err => {
+                this.logger.log(`${name}: ERR: %s...`, err);
+                reject(err);
+            });
+            p.stdout.on('data', line => {
+                const lines = util.cleanBuffer(line).split('\n');
+                for (let i = 0; i < lines.length; i++) {
+                    this.logger.log(`${name}: 1> %s`, lines[i]);
+                }
+            });
+            p.stderr.on('data', line => {
+                const lines = util.cleanBuffer(line).split('\n');
+                for (let i = 0; i < lines.length; i++) {
+                    this.logger.log(`${name}: 2> %s`, lines[i]);
+                }
+            });
         });
     }
 }

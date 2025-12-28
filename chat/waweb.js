@@ -195,7 +195,6 @@ class WAWeb {
         this.numbers = this.storage.get(this.STOR_WA_NUMBERS);
         this.workdir = config.workdir;
         this.accept = config.accept;
-        this.cleanLock = config.cleanLock !== undefined ? config.cleanLock : true;
         /** @type {string} */
         this.eula = config.eula !== undefined ? config.eula :
             'To improve user experience for our services, we will send the message through this channel.\nReply with *YES* to agree.';
@@ -211,6 +210,8 @@ class WAWeb {
         this.delay = Util.ms(config.delay || [1, 2]); // 1-2 seconds
         this.bdelay = Util.ms(config['broadcast-delay'] || [60, 120]); // 1-2 minutes
         this.bcooldown = config['broadcast-cooldown']; // number of messages sent, last broadcast time delay, cooldown time
+        this.cleanLock = config['clean-lock'] !== undefined ? config['clean-lock'] : true;
+        this.allSeen = config['all-seen'] !== undefined ? config['all-seen'] : true;
         const opts = {
             authStrategy: new LocalAuth({clientId: this.name, dataPath: this.workdir}),
             webVersionCache: {path: path.join(this.workdir, 'cache')}
@@ -220,6 +221,14 @@ class WAWeb {
         }
         this.client = new Client(opts);
         this.client
+            .on(Events.DISCONNECTED, () => {
+                console.log(`${this.name}: WhatsApp Web is disconnected...`);
+                this.connected = false;
+                this.qrcount = 0
+                if (typeof config.onState === 'function') {
+                    config.onState(this);
+                }
+            })
             .on(Events.QR_RECEIVED, qr => {
                 if (this.isTime('qrnotify', this.qrinterval)) {
                     console.log(`${this.name}: WhatsApp Web QR Code needed (${new Date()})!`);
@@ -231,6 +240,9 @@ class WAWeb {
                         this.parent.queue.requeue([{hash, number: config.admin, message, consumer: 'sms'}]);
                     }
                 }
+            })
+            .on(Events.AUTHENTICATED, () => {
+                console.log(`${this.name}: WhatsApp Web is authenticated...`);
             })
             .on(Events.READY, () => {
                 console.log(`${this.name}: WhatsApp Web is ready...`);
@@ -245,17 +257,6 @@ class WAWeb {
                 this.info = this.client.info;
                 this.terms = this.storage.get(this.STOR_WA_TERMS, this.info.wid.user);
                 console.log(`${this.name}: WhatsApp Web id is ${this.info.wid.user} (${this.info.pushname})`);
-                if (typeof config.onState === 'function') {
-                    config.onState(this);
-                }
-            })
-            .on(Events.AUTHENTICATED, () => {
-                console.log(`${this.name}: WhatsApp Web is authenticated...`);
-            })
-            .on(Events.DISCONNECTED, () => {
-                console.log(`${this.name}: WhatsApp Web is disconnected...`);
-                this.connected = false;
-                this.qrcount = 0
                 if (typeof config.onState === 'function') {
                     config.onState(this);
                 }
@@ -306,45 +307,69 @@ class WAWeb {
     initialize() {
         return Work.works([
             [w => Promise.resolve(console.log(`${this.name}: WhatsApp Web is initializing...`))],
-            [w => Promise.resolve(
-                this.client.on(Events.READY, () => {
-                    this.client.pupPage.evaluate(() => {
-                        if (window.Store.ContactMethods && typeof window.Store.ContactMethods.getIsMyContact !== 'function') {
-                            window.Store.ContactMethods = {
-                                ...window.Store.ContactMethods,
-                                ...window.require('WAWebFrontendContactGetters'),
+            [w => Promise.resolve(this.getIsMyContactPatch())],
+            [w => Promise.resolve(this.userDataCleanupPatch()), w => this.cleanLock],
+            [w => Promise.resolve(this.sendAllSeen()), w => this.allSeen],
+            [w => this.client.initialize()],
+        ]);
+    }
+
+    userDataCleanupPatch() {
+        const authStrategy = this.client.authStrategy;
+        if (authStrategy._beforeBrowserInitialized === undefined) {
+            authStrategy._beforeBrowserInitialized = authStrategy.beforeBrowserInitialized;
+            authStrategy.beforeBrowserInitialized = async () => {
+                await authStrategy._beforeBrowserInitialized();
+                if (authStrategy.userDataDir && !this.constructor.isClean(authStrategy.userDataDir)) {
+                    console.log(`${this.name}: WhatsApp Web is cleaning lock in ${authStrategy.userDataDir}...`);
+                    const files = fs.readdirSync(authStrategy.userDataDir);
+                    for (const file of files) {
+                        if (file.match('Singleton')) {
+                            const filePath = path.join(authStrategy.userDataDir, file);
+                            try {
+                                fs.unlinkSync(filePath);
                             }
-                        }
-                    });
-                })
-            )],
-            [w => new Promise((resolve, reject) => {
-                const authStrategy = this.client.authStrategy;
-                if (authStrategy._beforeBrowserInitialized === undefined) {
-                    authStrategy._beforeBrowserInitialized = authStrategy.beforeBrowserInitialized;
-                    authStrategy.beforeBrowserInitialized = async () => {
-                        await authStrategy._beforeBrowserInitialized();
-                        if (authStrategy.userDataDir && !this.constructor.isClean(authStrategy.userDataDir)) {
-                            console.log(`${this.name}: WhatsApp Web is cleaning lock in ${authStrategy.userDataDir}...`);
-                            const files = fs.readdirSync(authStrategy.userDataDir);
-                            for (const file of files) {
-                                if (file.match('Singleton')) {
-                                    const filePath = path.join(authStrategy.userDataDir, file);
-                                    try {
-                                        fs.unlinkSync(filePath);
-                                    }
-                                    catch (err) {
-                                        console.error(`Unable to unlink ${filePath}: ${err}!`);
-                                    }
-                                }
+                            catch (err) {
+                                console.error(`Unable to unlink ${filePath}: ${err}!`);
                             }
                         }
                     }
                 }
-                resolve();
-            }), w => this.cleanLock],
-            [w => this.client.initialize()],
-        ]);
+            }
+        }
+    }
+
+    getIsMyContactPatch() {
+        this.client.on(Events.READY, () => {
+            this.client.pupPage.evaluate(() => {
+                if (window.Store.ContactMethods && typeof window.Store.ContactMethods.getIsMyContact !== 'function') {
+                    window.Store.ContactMethods = {
+                        ...window.Store.ContactMethods,
+                        ...window.require('WAWebFrontendContactGetters'),
+                    }
+                }
+            });
+        });
+    }
+
+    sendAllSeen() {
+        this.client.on(Events.READY, () => {
+            Work.works([
+                [w => this.client.getChats()],
+                [w => new Promise((resolve, reject) => {
+                    const unreadChats = w.getRes(0)
+                        .filter(chat => chat.unreadCount);
+                    const q = new Queue(unreadChats, chat => {
+                        const next = () => setTimeout(() => q.next(), this.getDelay(this.delay));
+                        chat.sendSeen()
+                            .then(() => next())
+                            .catch(() => next());
+                    }, () => this.connected);
+                    q.once('done', () => resolve());
+                })],
+            ])
+            .catch(err => console.error(`Send all seen error: ${err}!`));
+        });
     }
 
     /**

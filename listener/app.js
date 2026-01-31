@@ -80,6 +80,24 @@ class App {
         return true;
     }
 
+    normalizeConfig(config) {
+        for (const key of Object.keys(config)) {
+            if (typeof config[key] === 'object') {
+                if (config[key].group === undefined) {
+                    config[key].group = {'': {}};
+                } else if (config[key].group === 'string') {
+                    config[key].group = {[config[key].group]: {}};
+                } else if (Array.isArray(config[key].group)) {
+                    const groups = [...config[key].group];
+                    config[key].group = {};
+                    for (const group of groups) {
+                        config[key].group[group] = {};
+                    }
+                }
+            }
+        }
+    }
+
     createServer() {
         const net = require('net');
         this.server = net.createServer().listen();
@@ -91,15 +109,16 @@ class App {
             io: io(this.config.url),
             cmds: {},
         }
-        for (const key in this.config.listens) {
-            const cfg = this.config.listens[key];
-            if ((group && cfg.group !== group) || (!group && cfg.group)) {
-                continue;
+        group = group || '';
+        for (const [key, cfg] of Object.entries(this.config.listens)) {
+            const groups = Object.keys(cfg.group);
+            if (groups.includes(group)) {
+                const event = cfg.type ? cfg.type : key;
+                const config = {...cfg, ...cfg.group[group]};
+                listener.cmds[event] = this.cmd.create(config, ['%DATA%']);
             }
-            const event = cfg.type ? cfg.type : key;
-            listener.cmds[event] = this.cmd.create(cfg, ['%DATA%']);
         }
-        const name = group ? group : 'world';
+        const name = group ?? 'world';
         listener.io
             .on('connect', () => {
                 console.log(`${name}: Connected to %s`, this.config.url);
@@ -127,12 +146,13 @@ class App {
 
     createListeners() {
         const groups = [];
-        Object.values(this.config.listens).forEach(cfg => {
-            const group = cfg.group || null;
-            if (groups.indexOf(group) < 0) {
-                groups.push(group);
+        for (const cfg of Object.values(this.config.listens)) {
+            for (const group of Object.keys(cfg.group)) {
+                if (!groups.includes(group)) {
+                    groups.push(group);
+                }
             }
-        });
+        }
         if (groups.length) {
             for (const group of groups) {
                 this.createListener(group);
@@ -142,6 +162,7 @@ class App {
 
     run() {
         if (this.check()) {
+            this.normalizeConfig(this.config.listens);
             this.createServer();
             this.createListeners();
             console.log('Listening for %s, press Ctrl + C to stop...', this.config.url);

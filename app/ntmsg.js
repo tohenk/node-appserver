@@ -102,43 +102,49 @@ class MessagingServer {
         this.logger.log(...args);
     }
 
-    doCmd(group, name, args, data, callback = null) {
-        if (this.cmd[name] === undefined) {
-            this.cmd[name] = [];
-            if (this.config[name] !== undefined) {
-                const cmd = {cmd: this.cmd.create(this.config[name], args)};
-                if (this.config[name].group) {
-                    cmd.group = this.config[name].group;
+    normalizeConfig(config) {
+        if (typeof config === 'object') {
+            if (config.group === undefined) {
+                config.group = {'': {}};
+            } else if (config.group === 'string') {
+                config.group = {[config.group]: {}};
+            } else if (Array.isArray(config.group)) {
+                const groups = [...config.group];
+                config.group = {};
+                for (const group of groups) {
+                    config.group[group] = {};
                 }
-                this.cmd[name].push(cmd);
-                console.log('Handle %s using %s...', name, cmd.cmd.bin ? cmd.cmd.bin : cmd.cmd.url);
-            } else {
-                Object.values(this.config).forEach(cfg => {
-                    if (cfg.type === name) {
-                        const cmd = {cmd: this.cmd.create(cfg, args)};
-                        if (cfg.group) {
-                            cmd.group = cfg.group;
-                        }
-                        this.cmd[name].push(cmd);
-                        console.log('Handle %s using %s...', name, cmd.cmd.bin ? cmd.cmd.bin : cmd.cmd.url);
-                    }
-                });
             }
         }
-        if (this.cmd[name].length) {
-            const q = new Queue([...this.cmd[name]], cmd => {
-                if ((group && cmd.group !== group) || (!group && cmd.group)) {
-                    q.next();
-                } else {
-                    this.cmd.execute(name, cmd.cmd, data)
-                        .then(() => q.next())
-                        .catch(err => {
-                            console.error(err);
-                            if (typeof callback === 'function') {
-                                callback(err);
-                            }
-                        });
+    }
+
+    doCmd(group, name, args, data, callback = null) {
+        group = group || '';
+        if (this.cmd[name] === undefined) {
+            this.cmd[name] = [];
+            for (const [key, cfg] of Object.entries(this.config)) {
+                if (key === name || cfg.type === name) {
+                    this.normalizeConfig(cfg);
+                    for (const gr of Object.keys(cfg.group)) {
+                        const config = {...cfg, ...cfg.group[gr]};
+                        const cmd = {cmd: this.cmd.create(config, args), group: gr};
+                        this.cmd[name].push(cmd);
+                        console.log('Handle %s:%s using %s...', gr ?? 'main', name, cmd.cmd.bin ?? cmd.cmd.url);
+                    }
                 }
+            }
+        }
+        if (Array.isArray(this.cmd[name]) && this.cmd[name].length) {
+            const cmds = this.cmd[name].filter(cmd => cmd.group === group);
+            const q = new Queue(cmds, cmd => {
+                this.cmd.execute(name, cmd.cmd, data)
+                    .then(() => q.next())
+                    .catch(err => {
+                        console.error(err);
+                        if (typeof callback === 'function') {
+                            callback(err);
+                        }
+                    });
             });
             if (typeof callback === 'function') {
                 q.once('done', () => callback(true));

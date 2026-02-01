@@ -348,11 +348,6 @@ class WAWeb {
                         ...window.require('WAWebFrontendContactGetters'),
                     }
                 }
-                // https://github.com/pedroslopez/whatsapp-web.js/issues/5718
-                if (typeof window.Store.SendSeen.markSeen === 'function' && window.Store.SendSeen._sendSeen === undefined) {
-                    window.Store.SendSeen._sendSeen = window.Store.SendSeen.sendSeen;
-                    window.Store.SendSeen.sendSeen = window.Store.SendSeen.markSeen;
-                }
             });
         });
     }

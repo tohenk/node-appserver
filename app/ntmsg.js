@@ -129,7 +129,7 @@ class MessagingServer {
                         const config = {...cfg, ...cfg.group[gr]};
                         const cmd = {cmd: this.cmd.create(config, args), group: gr};
                         this.cmd[name].push(cmd);
-                        console.log('Handle %s:%s using %s...', gr ?? 'main', name, cmd.cmd.bin ?? cmd.cmd.url);
+                        console.log('Handle %s:%s using %s...', gr !== '' ? gr : 'main', name, cmd.cmd.bin ?? cmd.cmd.url);
                     }
                 }
             }

@@ -118,7 +118,7 @@ class App {
                 listener.cmds[event] = this.cmd.create(config, ['%DATA%']);
             }
         }
-        const name = group ?? 'world';
+        const name = group !== '' ? group : 'world';
         listener.io
             .on('connect', () => {
                 console.log(`${name}: Connected to %s`, this.config.url);

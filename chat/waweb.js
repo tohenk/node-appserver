@@ -307,7 +307,6 @@ class WAWeb {
     initialize() {
         return Work.works([
             [w => Promise.resolve(console.log(`${this.name}: WhatsApp Web is initializing...`))],
-            [w => Promise.resolve(this.getIsMyContactPatch())],
             [w => Promise.resolve(this.userDataCleanupPatch()), w => this.cleanLock],
             [w => Promise.resolve(this.sendAllSeen()), w => this.allSeen],
             [w => this.client.initialize()],
@@ -337,19 +336,6 @@ class WAWeb {
                 }
             }
         }
-    }
-
-    getIsMyContactPatch() {
-        this.client.on(Events.READY, () => {
-            this.client.pupPage.evaluate(() => {
-                if (window.Store.ContactMethods && typeof window.Store.ContactMethods.getIsMyContact !== 'function') {
-                    window.Store.ContactMethods = {
-                        ...window.Store.ContactMethods,
-                        ...window.require('WAWebFrontendContactGetters'),
-                    }
-                }
-            });
-        });
     }
 
     sendAllSeen() {

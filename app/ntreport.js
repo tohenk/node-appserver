@@ -47,8 +47,8 @@ class ReportServer {
 
     init() {
         this.initializeLogger();
-        for (const ns in this.config) {
-            const cmd = this.createHandler(ns, this.config[ns]);
+        for (const [ns, config] of Object.entries(this.config)) {
+            const cmd = this.createHandler(ns, config);
             console.log('Serving %s...', ns);
             console.log('Using command %s...', cmd.getId());
         }

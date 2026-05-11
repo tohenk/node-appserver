@@ -27,19 +27,20 @@ const path = require('path');
 const Bridge = require('.');
 const UrlFetch = require('@ntlab/urllib/fetch');
 const GrabHandler = require('../grabber');
+const util = require('../lib/util');
 
 /**
- * Fetch file from url.
+ * Storage backend handling such as grab file or extract zip.
  *
  * @author Toha <tohenk@yahoo.com>
  */
-class Grabber extends Bridge {
+class Storage extends Bridge {
 
     FILENAME = '~file'
 
     onInit() {
-        this.workdir = path.join(this.config.workdir, '.grabber');
-        this.statusFilename = path.join(this.workdir, 'status.json');
+        this.workdir = path.join(this.config.workdir, '.storage');
+        this.statusFilename = path.join(this.workdir, 'grabber.json');
         if (!fs.existsSync(this.workdir)) {
             fs.mkdirSync(this.workdir, {recursive: true});
         }
@@ -56,15 +57,15 @@ class Grabber extends Bridge {
 
     handleServer(con) {
         con
-            .on('grab-file', data => {
+            .on('stor:grab-file', data => {
                 const res = {success: false};
                 if (data.url) {
-                    this.getApp().log('GRB: %s: Grab %s...', con.id, data.url);
+                    this.getApp().log('STO: %s: Grab %s...', con.id, data.url);
                     Object.assign(res, this.getFile(con.info.group, data.url, data.callback));
                 }
-                con.emit('grab-file', res);
+                con.emit('stor:grab-file', res);
             })
-            .on('grab-status', data => {
+            .on('stor:grab-status', data => {
                 const res = {success: false};
                 if (data.queue && this.statuses[data.queue] !== undefined) {
                     res.success = true;
@@ -80,9 +81,9 @@ class Grabber extends Bridge {
                         }
                     }
                 }
-                con.emit('grab-status', res);
+                con.emit('stor:grab-status', res);
             })
-            .on('grab-get', async data => {
+            .on('stor:grab-get', async data => {
                 const res = {success: false};
                 if (data.queue && this.statuses[data.queue] !== undefined) {
                     try {
@@ -106,9 +107,9 @@ class Grabber extends Bridge {
                         console.error(`grab-get: ${err}!`);
                     }
                 }
-                con.emit('grab-get', res);
+                con.emit('stor:grab-get', res);
             })
-            .on('grab-clean', data => {
+            .on('stor:grab-clean', data => {
                 const res = {success: false};
                 if (data.queue && this.statuses[data.queue] !== undefined) {
                     try {
@@ -122,12 +123,12 @@ class Grabber extends Bridge {
                         console.error(`grab-clean: ${err}!`);
                     }
                 }
-                con.emit('grab-clean', res);
+                con.emit('stor:grab-clean', res);
             });
     }
 
     getFile(group, url, callback) {
-        const res = {queue: this.genId()};
+        const res = {queue: util.genId()};
         this.statuses[res.queue] = {};
         if (group) {
             this.statuses[res.queue].group = group;
@@ -251,17 +252,9 @@ class Grabber extends Bridge {
                     console.log(`🔔 ${url}: Callback error ${err}`);
                 });
         } else {
-            this.getApp().doCmd(data.group, 'grabber', ['%DATA%'], {DATA: JSON.stringify(payload)});
+            this.getApp().doCmd(data.group, 'move-storage', ['%DATA%'], {DATA: JSON.stringify(payload)});
         }
-    }
-
-    genId() {
-        return require('crypto')
-            .createHash('sha1')
-            .update((new Date().getTime() + Math.random()).toString())
-            .digest('hex')
-            .substring(0, 8);
     }
 }
 
-module.exports = Grabber;
+module.exports = Storage;

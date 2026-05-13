@@ -40,52 +40,49 @@ class Storage extends Bridge {
 
     onInit() {
         this.workdir = path.join(this.config.workdir, '.storage');
-        this.statusFilename = path.join(this.workdir, 'grabber.json');
+        this.queueFilename = path.join(this.workdir, 'queue.json');
         if (!fs.existsSync(this.workdir)) {
             fs.mkdirSync(this.workdir, {recursive: true});
         }
-        this.statuses = {};
-        if (fs.existsSync(this.statusFilename)) {
+        this.queue = {};
+        if (fs.existsSync(this.queueFilename)) {
             try {
-                this.statuses = JSON.parse(fs.readFileSync(this.statusFilename));
+                this.queue = JSON.parse(fs.readFileSync(this.queueFilename));
             }
             catch (err) {
-                console.error(err);
+                console.error(util.errmsg(err));
             }
         }
-    }
-
-    handleServer(con) {
-        con
-            .on('stor:grab-file', data => {
+        this.handlers = {
+            'stor:grab-file': async ({con, data}) => {
                 const res = {success: false};
                 if (data.url) {
                     this.getApp().log('STO: %s: Grab %s...', con.id, data.url);
                     Object.assign(res, this.getFile(con.info.group, data.url, data.callback));
                 }
-                con.emit('stor:grab-file', res);
-            })
-            .on('stor:grab-status', data => {
+                return res;
+            },
+            'stor:grab-status': async ({data}) => {
                 const res = {success: false};
-                if (data.queue && this.statuses[data.queue] !== undefined) {
+                if (data.queue && this.queue[data.queue] !== undefined) {
                     res.success = true;
-                    if (this.statuses[data.queue].error) {
-                        res.error = this.statuses[data.queue].error;
+                    if (this.queue[data.queue].error) {
+                        res.error = this.queue[data.queue].error;
                     } else {
-                        const bytesTotal = this.statuses[data.queue].size;
+                        const bytesTotal = this.queue[data.queue].size;
                         if (bytesTotal > 0) {
-                            const bytesDone = this.statuses[data.queue].done || 0;
+                            const bytesDone = this.queue[data.queue].done || 0;
                             res.progress = Math.ceil(bytesDone / bytesTotal * 100);
                         } else {
                             res.progress = 0;
                         }
                     }
                 }
-                con.emit('stor:grab-status', res);
-            })
-            .on('stor:grab-get', async data => {
+                return res;
+            },
+            'stor:grab-get': async ({data}) => {
                 const res = {success: false};
-                if (data.queue && this.statuses[data.queue] !== undefined) {
+                if (data.queue && this.queue[data.queue] !== undefined) {
                     try {
                         const outfile = path.join(this.workdir, data.queue, this.FILENAME);
                         if (fs.existsSync(outfile)) {
@@ -104,43 +101,83 @@ class Storage extends Bridge {
                         }
                     }
                     catch (err) {
-                        console.error(`grab-get: ${err}!`);
+                        console.error(`grab-get: ${util.errmsg(err)}!`);
                     }
                 }
-                con.emit('stor:grab-get', res);
-            })
-            .on('stor:grab-clean', data => {
+                return res;
+            },
+            'stor:grab-clean': async ({data}) => {
                 const res = {success: false};
-                if (data.queue && this.statuses[data.queue] !== undefined) {
+                if (data.queue && this.queue[data.queue] !== undefined) {
                     try {
                         const outdir = path.join(this.workdir, data.queue);
                         fs.rmSync(outdir, {recursive: true, force: true});
-                        delete this.statuses[data.queue];
-                        this.saveStatuses();
+                        delete this.queue[data.queue];
+                        this.saveQueue();
                         res.success = true;
                     }
                     catch (err) {
-                        console.error(`grab-clean: ${err}!`);
+                        console.error(`grab-clean: ${util.errmsg(err)}!`);
                     }
                 }
-                con.emit('stor:grab-clean', res);
+                return res;
+            },
+            'stor:extract': async ({con, data}) => {
+                const res = {success: false};
+                if (data.zip && fs.existsSync(data.zip)) {
+                    this.getApp().log('STO: %s: Extract %s...', con.id, data.zip);
+                    const params = {};
+                    if (data.count) {
+                        params.count = data.count;
+                    }
+                    Object.assign(res, this.extractZip(con.info.group, data.zip, params, data.callback));
+                }
+                return res;
+            },
+            'stor:extract-status': async ({data}) => {
+                const res = {success: false};
+                if (data.queue && this.queue[data.queue] !== undefined) {
+                    res.success = true;
+                    if (this.queue[data.queue].error) {
+                        res.error = this.queue[data.queue].error;
+                    } else {
+                        const filesTotal = this.queue[data.queue].total;
+                        if (filesTotal > 0) {
+                            const filesDone = this.queue[data.queue].done || 0;
+                            res.progress = Math.ceil(filesDone / filesTotal * 100);
+                        } else {
+                            res.progress = 0;
+                        }
+                    }
+                }
+                return res;
+            }
+        }
+    }
+
+    handleServer(con) {
+        for (const [event, handler] of Object.entries(this.handlers)) {
+            con.on(event, async data => {
+                const res = await handler({con, data});
+                con.emit(event, res);
             });
+        }
     }
 
     getFile(group, url, callback) {
         const res = {queue: util.genId()};
-        this.statuses[res.queue] = {};
+        this.queue[res.queue] = {op: 'move'};
         if (group) {
-            this.statuses[res.queue].group = group;
+            this.queue[res.queue].group = group;
         }
         if (callback) {
-            this.statuses[res.queue].callback = callback;
+            this.queue[res.queue].callback = callback;
         }
         const outdir = path.join(this.workdir, res.queue);
         fs.mkdirSync(outdir, {recursive: true});
         const options = {
-            doOnStart: async data => this.storeStatus(res.queue, data),
-            doOnData: async data => this.storeStatus(res.queue, data),
+            doOnStart: async data => this.storeQueue(res.queue, data),
+            doOnData: async data => this.storeQueue(res.queue, data),
             outfile: path.join(outdir, this.FILENAME),
         }
         const puppeteer = this.getConfig('puppeteer');
@@ -148,58 +185,120 @@ class Storage extends Bridge {
             options.puppeteer = puppeteer;
         }
         GrabHandler.grab(url, options)
-            .then(data => this.storeResult(res.queue, data))
+            .then(data => this.storeResult(res.queue, data, this.getGrabResult(res.queue, data)))
             .catch(err => this.storeError(res.queue, err));
-        this.saveStatuses();
+        this.saveQueue();
         return res;
     }
 
-    storeStatus(id, data) {
-        if (this.statuses[id] !== undefined) {
+    extractZip(group, filename, params, callback) {
+        const res = {queue: util.genId()};
+        this.queue[res.queue] = {op: 'files'};
+        if (group) {
+            this.queue[res.queue].group = group;
+        }
+        if (callback) {
+            this.queue[res.queue].callback = callback;
+        }
+        const targetdir = path.dirname(filename);
+        const JSZip = require('jszip');
+        fs.readFile(filename, (err, data) => {
+            if (err) {
+                return this.storeError(res.queue, err);
+            }
+            JSZip.loadAsync(data)
+                .then(zip => {
+                    const files = [];
+                    zip.forEach((name, file) => {
+                        let okay = !file.dir;
+                        if (okay && params.count && files.length === params.count) {
+                            okay = false;
+                        } 
+                        if (okay) {
+                            files.push(file);
+                        }
+                    });
+                    this.storeQueue(res.queue, {done: 0, total: files.length});
+                    return files;
+                })
+                .then(async files => {
+                    const { contentType } = require('mime-types');
+                    const result = [];
+                    let count = 0;
+                    for await (const file of files) {
+                        const filename = path.join(targetdir, file.name);
+                        if (!fs.existsSync(filename)) {
+                            const buffer = await file.async('nodebuffer');
+                            fs.writeFileSync(filename, buffer);
+                            result.push({
+                                name: file.name,
+                                mime: contentType(filename),
+                                size: fs.statSync(filename).size
+                            });
+                        }
+                        count++;
+                        this.storeQueue(res.queue, {done: count});
+                    }
+                    this.storeResult(res.queue, {success: true}, result);
+                    return result;
+                })
+                .catch(err => this.storeError(res.queue, err));
+        });
+        this.saveQueue();
+        return res;
+    }
+
+    storeQueue(id, data) {
+        if (this.queue[id] !== undefined) {
             let updated = false;
             for (const [k, v] of Object.entries(data)) {
-                if (this.statuses[id][k] !== v) {
-                    this.statuses[id][k] = v;
+                if (this.queue[id][k] !== v) {
+                    this.queue[id][k] = v;
                     if (!updated) {
                         updated = true;
                     }
                 }
             }
             if (updated) {
-                this.saveStatuses();
+                this.saveQueue();
             }
             return updated;
         }
     }
 
-    storeResult(id, data) {
-        if (this.statuses[id] !== undefined) {
+    storeResult(id, data, payload) {
+        if (this.queue[id] !== undefined) {
             if (data.done) {
-                this.statuses[id].done = data.done;
+                this.queue[id].done = data.done;
             }
             if (data.success) {
-                this.saveStatuses();
-                this.sendResult(id, this.statuses[id]);
-            } else {
+                this.saveQueue();
+                if (payload) {
+                    this.notify(this.queue[id].op, {
+                        group: this.queue[id].group,
+                        callback: this.queue[id].callback,
+                    }, {queue: id, result: payload});
+                }
+            } else if (data.error) {
                 this.storeError(id, data.error);
             }
         }
     }
 
     storeError(id, data) {
-        if (this.statuses[id] !== undefined) {
-            this.statuses[id].error = data instanceof Error ? data.toString() : data;
-            this.saveStatuses();
-            console.log(`📂 ${id}: Got error ${this.statuses[id].error}!`);
+        if (this.queue[id] !== undefined) {
+            this.queue[id].error = data instanceof Error ? data.toString() : data;
+            this.saveQueue();
+            console.log(`📂 ${id}: Got error ${util.errmsg(data)}!`);
         }
     }
 
-    saveStatuses() {
+    saveQueue() {
         try {
-            fs.writeFileSync(this.statusFilename, JSON.stringify(this.statuses));
+            fs.writeFileSync(this.queueFilename, JSON.stringify(this.queue));
         }
         catch (err) {
-            console.error(`Unable to save ${this.statusFilename}: ${err}!`);
+            console.error(`Unable to save ${this.queueFilename}: ${util.errmsg(err)}!`);
         }
     }
 
@@ -209,31 +308,42 @@ class Storage extends Bridge {
      * @param {string} id Queue id
      * @param {object} data Queue data
      */
-    sendResult(id, data) {
+    getGrabResult(id, data) {
         if (data.name) {
             console.log(`📂 ${id}: Saved as ${data.name}...`);
         } else {
             console.log(`📂 ${id}: Completed...`);
         }
-        const payload = {queue: id, tempname: this.FILENAME};
+        const result = {queue: id, tempname: this.FILENAME};
         for (const prop of ['name', 'mime', 'size']) {
             if (data[prop] !== undefined) {
-                payload[prop] = data[prop];
+                result[prop] = data[prop];
             }
         }
-        if (data.callback) {
+        return result;
+    }
+
+    /**
+     * Notify operation result.
+     *
+     * @param {string} op Operation mode
+     * @param {object} cb Callback data
+     * @param {object} data Payload data
+     */
+    notify(op, cb, data) {
+        if (cb.callback) {
             let url, token;
-            if (data.callback.url) {
-                url = data.callback.url;
-                if (data.callback.token) {
-                    token = data.callback.token;
+            if (cb.callback.url) {
+                url = cb.callback.url;
+                if (cb.callback.token) {
+                    token = cb.callback.token;
                 }
             } else {
-                url = data.callback;
+                url = cb.callback;
             }
             const params = {
                 method: 'POST',
-                data: Buffer.from(JSON.stringify(payload)),
+                data: Buffer.from(JSON.stringify(data)),
                 dataType: 'application/json',
             }
             if (token) {
@@ -241,18 +351,21 @@ class Storage extends Bridge {
                     authorization: `Bearer ${token}`
                 }
             }
-            const callback = new UrlFetch();
-            callback.fetch(url, params)
+            const fetcher = new UrlFetch();
+            fetcher.fetch(`${url}?op=${op}`, params)
                 .then(res => {
                     if (res) {
                         console.log(`🔔 ${url}: Got reply ${res}`);
                     }
                 })
                 .catch(err => {
-                    console.log(`🔔 ${url}: Callback error ${err}`);
+                    console.log(`🔔 ${url}: Callback error ${util.errmsg(err)}`);
                 });
         } else {
-            this.getApp().doCmd(data.group, 'move-storage', ['%DATA%'], {DATA: JSON.stringify(payload)});
+            this.getApp().doCmd(cb.group, 'storage', ['%DATA%'], {
+                OP: op,
+                DATA: JSON.stringify(data),
+            });
         }
     }
 }

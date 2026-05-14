@@ -22,7 +22,7 @@
  * SOFTWARE.
  */
 
-const ChatGateway = require('../bridge/chat');
+const ChatBridge = require('../bridge/chat');
 const Util = require('../lib/util');
 
 /**
@@ -32,7 +32,7 @@ const Util = require('../lib/util');
  */
 class ChatFactory {
 
-    /** @type {ChatGateway} */
+    /** @type {ChatBridge} */
     parent = null
     /** @type {typeof ChatConsumer} */
     factory = null
@@ -44,7 +44,7 @@ class ChatFactory {
     /**
      * Constructor.
      *
-     * @param {ChatGateway} parent The owner
+     * @param {ChatBridge} parent The owner
      * @param {object} data Factory data
      */
     constructor(parent, data) {
@@ -112,7 +112,7 @@ class ChatConsumer {
 
     /** @type {string} */
     id = null
-    /** @type {ChatGateway} */
+    /** @type {ChatBridge} */
     parent = null
     /** @type {string} */
     connected = false
@@ -120,7 +120,7 @@ class ChatConsumer {
     /**
      * Constructor.
      *
-     * @param {ChatGateway} parent The owner
+     * @param {ChatBridge} parent The owner
      */
     constructor(parent) {
         this.parent = parent;

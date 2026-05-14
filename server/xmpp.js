@@ -26,7 +26,7 @@ const fs = require('fs');
 const path = require('path');
 const u = require('util');
 const { client, xml, Client } = require('@xmpp/client');
-const debug = require('debug')('appserver-xmpp');
+const debug = require('debug')('appserver:xmpp');
 const cmd = require('@ntlab/ntlib/cmd');
 const util = require('@ntlab/ntlib/util');
 

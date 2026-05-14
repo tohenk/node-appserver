@@ -39,11 +39,11 @@ const WAWebChat = require('../chat/waweb');
  */
 
 /**
- * Chat gateway provide a message channel for client through SMS or WhatsApp chat.
+ * Chat bridge provide a message channel for client through SMS or WhatsApp chat.
  *
  * @author Toha <tohenk@yahoo.com>
  */
-class ChatGateway extends Bridge {
+class ChatBridge extends Bridge {
 
     /** @type {ChatConsumer[]} */
     consumers = []
@@ -56,6 +56,37 @@ class ChatGateway extends Bridge {
         this.createQueue();
         this.setupWAWeb(this.setupWAWebConfig(this.getConfig('whatsapp')));
         this.setupSMSGateway(this.getConfig('smsgw'));
+        this.serverHandlers = {
+            'text-message-attachment': async ({con, data}) => {
+                const res = {success: false};
+                if (data.hash) {
+                    if (this.attachments === undefined) {
+                        this.attachments = {};
+                    }
+                    let buff = Buffer.from(data.content);
+                    if (this.attachments[data.hash] !== undefined) {
+                        buff = Buffer.concat([this.attachments[data.hash], buff]);
+                    }
+                    this.attachments[data.hash] = buff;
+                    res.success = true;
+                    res.length = buff.byteLength;
+                    this.getApp().log('SVR: %s: Attachment %s (%d bytes)...', con.id, data.hash, res.length);
+                }
+                return res;
+            },
+            'text-message': async ({con, data}) => {
+                const res = {success: true};
+                this.getApp().log('SVR: %s: Send text to %s "%s"...', con.id, data.number, data.message);
+                if (this.attachments !== undefined && this.attachments[data.hash] !== undefined) {
+                    if (data.attr.attachment) {
+                        data.attr.attachment.content = this.attachments[data.hash];
+                        delete this.attachments[data.hash];
+                    }
+                }
+                this.queue.requeue([data]);
+                return res;
+            }
+        }
     }
 
     onFinalize() {
@@ -119,37 +150,6 @@ class ChatGateway extends Bridge {
     createFactory(data) {
         const factory = new ChatFactory(this, data);
         return factory.create();
-    }
-
-    handleServer(con) {
-        con
-            .on('text-message-attachment', data => {
-                const res = {success: false};
-                if (data.hash) {
-                    if (this.attachments === undefined) {
-                        this.attachments = {};
-                    }
-                    let buff = Buffer.from(data.content);
-                    if (this.attachments[data.hash] !== undefined) {
-                        buff = Buffer.concat([this.attachments[data.hash], buff]);
-                    }
-                    this.attachments[data.hash] = buff;
-                    res.success = true;
-                    res.length = buff.byteLength;
-                    this.getApp().log('SVR: %s: Attachment %s (%d bytes)...', con.id, data.hash, res.length);
-                }
-                con.emit('text-message-attachment', res);
-            })
-            .on('text-message', data => {
-                this.getApp().log('SVR: %s: Send text to %s "%s"...', con.id, data.number, data.message);
-                if (this.attachments !== undefined && this.attachments[data.hash] !== undefined) {
-                    if (data.attr.attachment) {
-                        data.attr.attachment.content = this.attachments[data.hash];
-                        delete this.attachments[data.hash];
-                    }
-                }
-                this.queue.requeue([data]);
-            });
     }
 
     createQueue() {
@@ -290,4 +290,4 @@ class ChatGateway extends Bridge {
     }
 }
 
-module.exports = ChatGateway;
+module.exports = ChatBridge;

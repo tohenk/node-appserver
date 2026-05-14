@@ -24,6 +24,7 @@
 
 const MessagingServer = require('../app/ntmsg');
 const io = require('socket.io-client');
+const debug = require('debug')('appserver:bridge');
 
 class MessagingBridge {
 
@@ -31,6 +32,10 @@ class MessagingBridge {
     app = null
     /** @type {object} */
     config = {}
+    /** @type {io.Socket[]} */
+    servers = []
+    /** @type {io.Socket[]} */
+    clients = []
 
     constructor(app) {
         this.app = app;
@@ -58,12 +63,42 @@ class MessagingBridge {
     }
 
     handleServer(con) {
+        if (typeof this.serverHandlers === 'object') {
+            for (const [event, handler] of Object.entries(this.serverHandlers)) {
+                con.on(event, async data => {
+                    debug('Handling server event', event, 'from', con.id, 'with', data);
+                    const res = await handler({con, data});
+                    if (res !== undefined) {
+                        con.emit(event, res);
+                    }
+                });
+            }
+        }
     }
 
     handleClient(con) {
+        if (typeof this.clientHandlers === 'object') {
+            for (const [event, handler] of Object.entries(this.clientHandlers)) {
+                con.on(event, async data => {
+                    debug('Handling client event', event, 'from', con.id, 'with', data);
+                    const res = await handler({con, data});
+                    if (res !== undefined) {
+                        con.emit(event, res);
+                    }
+                });
+            }
+        }
     }
 
     disconnect(con) {
+        let idx = this.servers.indexOf(con);
+        if (idx >= 0) {
+            this.servers.splice(idx, 1);
+        }
+        idx = this.clients.indexOf(con);
+        if (idx >= 0) {
+            this.clients.splice(idx, 1);
+        }
     }
 
     /**

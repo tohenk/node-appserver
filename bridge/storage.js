@@ -34,7 +34,7 @@ const util = require('../lib/util');
  *
  * @author Toha <tohenk@yahoo.com>
  */
-class Storage extends Bridge {
+class StorageBridge extends Bridge {
 
     FILENAME = '~file'
 
@@ -53,7 +53,7 @@ class Storage extends Bridge {
                 console.error(util.errmsg(err));
             }
         }
-        this.handlers = {
+        this.serverHandlers = {
             'stor:grab-file': async ({con, data}) => {
                 const res = {success: false};
                 if (data.url) {
@@ -152,15 +152,6 @@ class Storage extends Bridge {
                 }
                 return res;
             }
-        }
-    }
-
-    handleServer(con) {
-        for (const [event, handler] of Object.entries(this.handlers)) {
-            con.on(event, async data => {
-                const res = await handler({con, data});
-                con.emit(event, res);
-            });
         }
     }
 
@@ -370,4 +361,4 @@ class Storage extends Bridge {
     }
 }
 
-module.exports = Storage;
+module.exports = StorageBridge;

@@ -25,17 +25,38 @@
 const io = require('socket.io-client');
 const Bridge = require('.');
 
-class Sipd extends Bridge {
+class SipdBridge extends Bridge {
 
     /** @type {io.Socket} */
     sipd = null
     /** @type {boolean} */
     connected = false
-    /** @type {io.Socket[]} */
-    clients = []
 
     onInit() {
         this.setupSipd(this.getConfig('sipd'));
+        this.clientHandlers = {
+            'sipd-notify': async ({con, data}) => {
+                if (this.sipd && !this.clients.includes(con)) {
+                    this.clients.push(con);
+                    this.sipd.emit('status');
+                }
+            },
+            'sipd-status': async ({con, data}) => {
+                if (this.sipd && this.clients.includes(con)) {
+                    this.sipd.emit('status');
+                }
+            },
+            'sipd-captcha': async ({con, data}) => {
+                if (this.sipd && this.clients.includes(con)) {
+                    this.sipd.emit('captcha', Object.assign({id: con.id}, data));
+                }
+            },
+            'sipd-logs': async ({con, data}) => {
+                if (this.sipd && this.clients.includes(con)) {
+                    this.sipd.emit('logs', {id: con.id});
+                }
+            }
+        }
     }
 
     setupSipd(config) {
@@ -75,41 +96,6 @@ class Sipd extends Bridge {
             ;
         }
     }
-
-    handleClient(con) {
-        if (this.sipd) {
-            con
-                .on('sipd-notify', () => {
-                    if (this.clients.indexOf(con) < 0) {
-                        this.clients.push(con);
-                        this.sipd.emit('status');
-                    }
-                })
-                .on('sipd-status', () => {
-                    if (this.clients.indexOf(con) >= 0) {
-                        this.sipd.emit('status');
-                    }
-                })
-                .on('sipd-captcha', data => {
-                    if (this.clients.indexOf(con) >= 0) {
-                        this.sipd.emit('captcha', Object.assign({id: con.id}, data));
-                    }
-                })
-                .on('sipd-logs', () => {
-                    if (this.clients.indexOf(con) >= 0) {
-                        this.sipd.emit('logs', {id: con.id});
-                    }
-                })
-            ;
-        }
-    }
-
-    disconnect(con) {
-        const idx = this.clients.indexOf(con);
-        if (idx >= 0) {
-            this.clients.splice(idx);
-        }
-    }
 }
 
-module.exports = Sipd;
+module.exports = SipdBridge;

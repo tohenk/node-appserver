@@ -25,17 +25,33 @@
 const io = require('socket.io-client');
 const Bridge = require('.');
 
-class Sippol extends Bridge {
+class SippolBridge extends Bridge {
 
     /** @type {io.Socket} */
     sippol = null
     /** @type {boolean} */
     connected = false
-    /** @type {io.Socket[]} */
-    clients = []
 
     onInit() {
         this.setupSippol(this.getConfig('sippol'));
+        this.clientHandlers = {
+            'sippol-notify': async ({con, data}) => {
+                if (this.sippol && !this.clients.includes(con)) {
+                    this.clients.push(con);
+                    this.sippol.emit('status');
+                }
+            },
+            'sippol-status': async ({con, data}) => {
+                if (this.sippol && this.clients.includes(con)) {
+                    this.sippol.emit('status');
+                }
+            },
+            'sippol-logs': async ({con, data}) => {
+                if (this.sippol && this.clients.includes(con)) {
+                    this.sippol.emit('logs', {id: con.id});
+                }
+            }
+        }
     }
 
     setupSippol(config) {
@@ -67,36 +83,6 @@ class Sippol extends Bridge {
             ;
         }
     }
-
-    handleClient(con) {
-        if (this.sippol) {
-            con
-                .on('sippol-notify', () => {
-                    if (this.clients.indexOf(con) < 0) {
-                        this.clients.push(con);
-                        this.sippol.emit('status');
-                    }
-                })
-                .on('sippol-status', () => {
-                    if (this.clients.indexOf(con) >= 0) {
-                        this.sippol.emit('status');
-                    }
-                })
-                .on('sippol-logs', () => {
-                    if (this.clients.indexOf(con) >= 0) {
-                        this.sippol.emit('logs', {id: con.id});
-                    }
-                })
-            ;
-        }
-    }
-
-    disconnect(con) {
-        const idx = this.clients.indexOf(con);
-        if (idx >= 0) {
-            this.clients.splice(idx);
-        }
-    }
 }
 
-module.exports = Sippol;
+module.exports = SippolBridge;

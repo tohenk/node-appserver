@@ -213,7 +213,7 @@ class StorageBridge extends Bridge {
                     return files;
                 })
                 .then(async files => {
-                    const { contentType } = require('mime-types');
+                    const mimeTypes = require('mime-types');
                     const result = [];
                     let count = 0;
                     for await (const file of files) {
@@ -223,7 +223,7 @@ class StorageBridge extends Bridge {
                             fs.writeFileSync(filename, buffer);
                             result.push({
                                 name: file.name,
-                                mime: contentType(filename),
+                                mime: mimeTypes.lookup(filename),
                                 size: fs.statSync(filename).size
                             });
                         }

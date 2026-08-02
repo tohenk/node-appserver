@@ -1,7 +1,7 @@
 /**
  * The MIT License (MIT)
  *
- * Copyright (c) 2016-2026 Toha <tohenk@yahoo.com>
+ * Copyright (c) 2014-2026 Toha <tohenk@yahoo.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
  * this software and associated documentation files (the "Software"), to deal in
@@ -139,7 +139,7 @@ class AppServer {
         console.log(title);
         console.log('='.repeat(79));
         console.log('');
-        const AppClass = require('./../' + module);
+        const AppClass = require(module);
         const instance = new AppClass(this, factory, configs, opts);
         console.log('');
         console.log('-'.repeat(79));

@@ -40,8 +40,8 @@ cmd.addVar('logdir', 'l', 'Set the log file location', 'directory');
 
 // === include app handler ===
 
-const socketsvr = require('./server/socket');
-const xmppsvr = require('./server/xmpp');
+const socketsvr = require('./app/socket');
+const xmppsvr = require('./app/xmpp');
 
 if (!cmd.parse() || (cmd.get('help') && usage())) {
     process.exit();

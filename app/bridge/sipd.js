@@ -1,7 +1,7 @@
 /**
  * The MIT License (MIT)
  *
- * Copyright (c) 2020-2026 Toha <tohenk@yahoo.com>
+ * Copyright (c) 2014-2026 Toha <tohenk@yahoo.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
  * this software and associated documentation files (the "Software"), to deal in
@@ -25,58 +25,71 @@
 const io = require('socket.io-client');
 const Bridge = require('.');
 
-class SippolBridge extends Bridge {
+class SipdBridge extends Bridge {
 
     /** @type {io.Socket} */
-    sippol = null
+    sipd = null
     /** @type {boolean} */
     connected = false
 
     onInit() {
-        this.setupSippol(this.getConfig('sippol'));
+        this.setupSipd(this.getConfig('sipd'));
         this.clientHandlers = {
-            'sippol-notify': async ({con, data}) => {
-                if (this.sippol && !this.clients.includes(con)) {
+            'sipd-notify': async ({con, data}) => {
+                if (this.sipd && !this.clients.includes(con)) {
                     this.clients.push(con);
-                    this.sippol.emit('status');
+                    this.sipd.emit('status');
                 }
             },
-            'sippol-status': async ({con, data}) => {
-                if (this.sippol && this.clients.includes(con)) {
-                    this.sippol.emit('status');
+            'sipd-status': async ({con, data}) => {
+                if (this.sipd && this.clients.includes(con)) {
+                    this.sipd.emit('status');
                 }
             },
-            'sippol-logs': async ({con, data}) => {
-                if (this.sippol && this.clients.includes(con)) {
-                    this.sippol.emit('logs', {id: con.id});
+            'sipd-captcha': async ({con, data}) => {
+                if (this.sipd && this.clients.includes(con)) {
+                    this.sipd.emit('captcha', Object.assign({id: con.id}, data));
+                }
+            },
+            'sipd-logs': async ({con, data}) => {
+                if (this.sipd && this.clients.includes(con)) {
+                    this.sipd.emit('logs', {id: con.id});
                 }
             }
         }
     }
 
-    setupSippol(config) {
+    setupSipd(config) {
         if (config && config.url) {
-            console.log('SIPPOL Bridge at %s', config.url);
-            this.sippol = this.createSocketClient(config);
-            this.sippol
+            console.log('SIPD Bridge at %s', config.url);
+            this.sipd = this.createSocketClient(config);
+            this.sipd
                 .on('connect', () => {
-                    console.log('SIPPOL: Connected to %s', config.url);
-                    this.sippol.emit('notify');
+                    console.log('SIPD: Connected to %s', config.url);
+                    this.sipd.emit('notify');
                     this.connected = true;
                 })
                 .on('disconnect', () => {
-                    console.log('SIPPOL: Disconnected from %s', config.url);
+                    console.log('SIPD: Disconnected from %s', config.url);
                     this.connected = false;
                 })
                 .on('status', status => {
                     this.clients.forEach(con => {
-                        con.emit('sippol-status', status);
+                        con.emit('sipd-status', status);
+                    });
+                })
+                .on('captcha', data => {
+                    this.clients.forEach(con => {
+                        if (data.ref === con.id) {
+                            delete data.ref;
+                            con.emit('sipd-captcha', data);
+                        }
                     });
                 })
                 .on('logs', data => {
                     this.clients.forEach(con => {
                         if (data.ref === con.id && data.logs) {
-                            con.emit('sippol-logs', data.logs);
+                            con.emit('sipd-logs', data.logs);
                         }
                     });
                 })
@@ -85,4 +98,4 @@ class SippolBridge extends Bridge {
     }
 }
 
-module.exports = SippolBridge;
+module.exports = SipdBridge;

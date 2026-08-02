@@ -1,6 +1,6 @@
 {
   "name": "@ntlab/app-server",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "description": "App Server for IPC",
   "author": "Toha <tohenk@yahoo.com>",
   "license": "MIT",
@@ -11,9 +11,9 @@
     "xmpp"
   ],
   "dependencies": {
-    "@ntlab/ntlib": "^2.9.1",
+    "@ntlab/ntlib": "^2.10.0",
     "@ntlab/urllib": "^1.1.0",
-    "@ntlab/work": "^2.7.0",
+    "@ntlab/work": "^2.8.1",
     "@xmpp/client": "^0.13.6",
     "debug": "^4.4.3",
     "jszip": "^3.10.1",

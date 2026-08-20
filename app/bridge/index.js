@@ -62,9 +62,17 @@ class MessagingBridge {
         return this.config[key];
     }
 
+    /**
+     * Handle server connection.
+     *
+     * @param {import('events').EventEmitter} con Event emitter
+     */
     handleServer(con) {
         if (typeof this.serverHandlers === 'object') {
             for (const [event, handler] of Object.entries(this.serverHandlers)) {
+                for (const listener of con.listeners(event)) {
+                    con.off(event, listener);
+                }
                 con.on(event, async data => {
                     debug('Handling server event', event, 'from', con.id, 'with', data);
                     const res = await handler({con, data});
@@ -76,9 +84,17 @@ class MessagingBridge {
         }
     }
 
+    /**
+     * Handle client connection.
+     *
+     * @param {import('events').EventEmitter} con Event emitter
+     */
     handleClient(con) {
         if (typeof this.clientHandlers === 'object') {
             for (const [event, handler] of Object.entries(this.clientHandlers)) {
+                for (const listener of con.listeners(event)) {
+                    con.off(event, listener);
+                }
                 con.on(event, async data => {
                     debug('Handling client event', event, 'from', con.id, 'with', data);
                     const res = await handler({con, data});

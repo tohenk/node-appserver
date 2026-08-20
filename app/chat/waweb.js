@@ -212,6 +212,7 @@ class WAWeb {
         this.qcooldown = config['queue-cooldown']; // number of processed queues, last queue time delay, cooldown time
         this.cleanLock = config['clean-lock'] !== undefined ? config['clean-lock'] : true;
         this.allSeen = config['all-seen'] !== undefined ? config['all-seen'] : true;
+        this.alwaysBroadcast = config['always-broadcast'] !== undefined ? config['always-broadcast'] : false;
         const opts = {
             authStrategy: new LocalAuth({clientId: this.name, dataPath: this.workdir}),
             webVersionCache: {path: path.join(this.workdir, 'cache')}
@@ -478,6 +479,9 @@ class WAWeb {
      * @returns {Promise<boolean>}
      */
     canConsume(msg, flags) {
+        if (this.alwaysBroadcast) {
+            flags.broadcast = true;
+        }
         const number = this.normalizeNumber(msg.address);
         return Work.works([
             ['contact', w => this.getWAContact(number)],

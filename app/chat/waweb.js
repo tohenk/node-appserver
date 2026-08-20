@@ -30,7 +30,7 @@ const Queue = require('@ntlab/work/queue');
 const Util = require('../lib/util');
 const { ChatConsumer } = require('.');
 const { ChatStorage } = require('./storage');
-const { Client, Events, LocalAuth, Message, MessageAck, MessageMedia } = require('whatsapp-web.js');
+const { Client, Chat, Events, LocalAuth, Message, MessageAck, MessageMedia } = require('whatsapp-web.js');
 
 /**
  * @typedef {Object} Attachment
@@ -208,8 +208,8 @@ class WAWeb {
             }
         }
         this.delay = Util.ms(config.delay || [1, 2]); // 1-2 seconds
-        this.bdelay = Util.ms(config['broadcast-delay'] || [60, 120]); // 1-2 minutes
-        this.bcooldown = config['broadcast-cooldown']; // number of messages sent, last broadcast time delay, cooldown time
+        this.qdelay = Util.ms(config['queue-delay'] || [60, 120]); // 1-2 minutes
+        this.qcooldown = config['queue-cooldown']; // number of processed queues, last queue time delay, cooldown time
         this.cleanLock = config['clean-lock'] !== undefined ? config['clean-lock'] : true;
         this.allSeen = config['all-seen'] !== undefined ? config['all-seen'] : true;
         const opts = {
@@ -264,14 +264,13 @@ class WAWeb {
             .on(Events.MESSAGE_RECEIVED, msg => {
                 Work.works([
                     ['contact', w => msg.getContact()],
-                    ['chat', w => msg.getChat()],
                     ['notify', w => Promise.resolve(this.notifyNewMessage(w.getRes('contact').number, msg.body)), w => msg.body],
-                    ['noop', w => this.noop()],
-                    ['seen', w => w.getRes('chat').sendSeen()],
+                    ['seen', w => Promise.resolve(this.addQueue(
+                        WAWeb.QUEUE_SEEN,
+                        [w.getRes('contact').id._serialized],
+                        (err) => console.log(`${this.name}: Set seen for message ${msg.id._serialized} is ${err ? 'failed' : 'success'}!`)
+                    ))],
                 ])
-                .then(seen => {
-                    console.log(`${this.name}: Message ${msg.id._serialized} set seen: ${seen ? 'OK' : 'FAILED'}!`);
-                })
                 .catch(err => console.error(err));
             })
             .on(Events.MESSAGE_ACK, (msg, ack) => {
@@ -299,9 +298,8 @@ class WAWeb {
                         delete this.messages[msg.id.id];
                     }
                 }
-            })
-        ;
-        this.createBroadcastQueue();
+            });
+        this.createQueue();
     }
 
     initialize() {
@@ -319,7 +317,7 @@ class WAWeb {
             authStrategy._beforeBrowserInitialized = authStrategy.beforeBrowserInitialized;
             authStrategy.beforeBrowserInitialized = async () => {
                 await authStrategy._beforeBrowserInitialized();
-                if (authStrategy.userDataDir && !this.constructor.isClean(authStrategy.userDataDir)) {
+                if (authStrategy.userDataDir && !WAWeb.isClean(authStrategy.userDataDir)) {
                     console.log(`${this.name}: WhatsApp Web is cleaning lock in ${authStrategy.userDataDir}...`);
                     const files = fs.readdirSync(authStrategy.userDataDir);
                     for (const file of files) {
@@ -343,14 +341,23 @@ class WAWeb {
             Work.works([
                 [w => this.client.getChats()],
                 [w => new Promise((resolve, reject) => {
+                    /** @type {Chat[]} */
                     const unreadChats = w.getRes(0)
                         .filter(chat => chat.unreadCount);
                     const q = new Queue(unreadChats, chat => {
-                        const next = () => setTimeout(() => q.next(), this.getDelay(this.delay));
-                        chat.sendSeen()
-                            .then(() => next())
-                            .catch(() => next());
-                    }, () => this.connected);
+                        const f = (err, res) => {
+                            if (err) {
+                                console.error(err);
+                            }
+                            if (res) {
+                                this.addQueue(WAWeb.QUEUE_SEEN, [res.id._serialized]);
+                            }
+                            q.next();
+                        }
+                        chat.getContact()
+                            .then(res => f(undefined, res))
+                            .catch(err => f(err));
+                    });
                     q.once('done', () => resolve());
                 })],
             ])
@@ -359,54 +366,83 @@ class WAWeb {
     }
 
     /**
-     * Create broadcast message queue dispatcher.
+     * Create queue dispatcher.
      */
-    createBroadcastQueue() {
+    createQueue() {
         const interval = () => {
-            if (Array.isArray(this.bcooldown) && this.bcnt >= this.bcooldown[0]) {
-                if (!this.bcool) {
+            if (Array.isArray(this.qcooldown) && this.qcnt >= this.qcooldown[0]) {
+                if (!this.qcool) {
                     const now = new Date();
-                    if (now.getTime() < this.blast.getTime() + Util.ms(this.bcooldown[1])) {
-                        this.bcool = true;
-                        console.log(`${this.name}: WhatsApp Web is cooling down for ${this.bcooldown[2]}s...`);
+                    if (now.getTime() < this.qlast.getTime() + Util.ms(this.qcooldown[1])) {
+                        this.qcool = true;
+                        console.log(`${this.name}: WhatsApp Web is cooling down for ${this.qcooldown[2]}s...`);
                     }
                 }
-                if (this.bcool) {
-                    return Util.ms(this.bcooldown[2]);
+                if (this.qcool) {
+                    return Util.ms(this.qcooldown[2]);
                 }
             }
-            return this.bwait;
+            return this.qwait;
         }
-        const callback = () => {
-            if (this.bcnt === undefined || this.bcool) {
-                this.bcnt = 0;
-                if (this.bcool) {
-                    this.bcool = false;
+        const cb = () => {
+            if (this.qcnt === undefined || this.qcool) {
+                this.qcnt = 0;
+                if (this.qcool) {
+                    this.qcool = false;
                 }
             }
-            this.bcnt++;
-            this.blast = new Date();
-            this.bwait = this.getDelay(this.bdelay);
+            this.qcnt++;
+            this.qlast = new Date();
+            this.qwait = this.getDelay(this.qdelay);
         }
         /** @type {Queue} */
-        this.bq = new Queue([], queue => {
-            console.log(`${this.name}: Broadcast ${JSON.stringify(queue.msg)}`);
-            const f = err => {
-                if (err) {
-                    console.error(err);
+        this.queue = new Queue([], queue => {
+            const {name, args, callback} = queue;
+            const f = (err, res) => {
+                if (typeof callback === 'function') {
+                    callback(err, res);
+                } else {
+                    if (err) {
+                        console.error(err);
+                    }
                 }
-                this.bq.next();
+                this.queue.next();
             }
-            this.sendChat(queue.contact, queue.msg, queue.flags)
-                .then(() => f())
-                .catch(err => f(err));
-        }, () => this.connected && this.isTime('btime', interval, callback));
+            if (typeof this[name] === 'function') {
+                this[name](...args)
+                    .then(res => f(undefined, res))
+                    .catch(err => f(err));
+            } else {
+                f(`Uknown queue ${name}!`);
+            }
+        }, () => this.connected && this.isTime('qtime', interval, cb));
+    }
+
+    /**
+     * Add queue.
+     *
+     * @param {number} type Queue type
+     * @param {object} data Queue data
+     * @param {Function} callback Queue callback
+     * @returns {object}
+     */
+    addQueue(type, data, callback) {
+        const commands = {
+            [WAWeb.QUEUE_CHAT]: 'sendChat',
+            [WAWeb.QUEUE_SEEN]: 'sendSeen',
+        }
+        const queue = {name: commands[type], args: data};
+        if (typeof callback === 'function') {
+            queue.callback = callback;
+        }
+        this.queue.requeue([queue]);
+        return queue;
     }
 
     getState() {
         return {
             messages: {...this.messages},
-            broadcasts: [...this.bq.queues],
+            queues: [...this.queue.queues],
         }
     }
 
@@ -414,8 +450,8 @@ class WAWeb {
         if (state.messages && Object.keys(state.messages).length) {
             this.messages = {...state.messages};
         }
-        if (Array.isArray(state.broadcasts)) {
-            this.bq.requeue(state.broadcasts);
+        if (Array.isArray(state.queues)) {
+            this.queue.requeue(state.queues);
         }
     }
 
@@ -445,7 +481,7 @@ class WAWeb {
         const number = this.normalizeNumber(msg.address);
         return Work.works([
             ['contact', w => this.getWAContact(number)],
-            ['broadcast', w => Promise.resolve(this.bq.requeue([{contact: w.getRes('contact'), msg, flags}])),
+            ['broadcast', w => Promise.resolve(this.addQueue(WAWeb.QUEUE_CHAT, [w.getRes('contact'), msg, flags])),
                 w => w.getRes('contact') && flags.broadcast],
             ['send', w => this.sendChat(w.getRes('contact'), msg, flags),
                 w => w.getRes('contact') && !flags.broadcast],
@@ -546,6 +582,19 @@ class WAWeb {
             ['stop-typing', w => w.getRes('chat').clearState(), w => w.getRes('chat') && options.typing],
             ['send', w => this.client.sendMessage(contact, message, params)],
             ['store', w => Promise.resolve(this.saveMsg(w.getRes('send'), msg)), w => w.getRes('send')],
+        ]);
+    }
+
+    /**
+     * Send seen to contact.
+     *
+     * @param {string} contact WhatsApp serialized contact
+     * @returns {Promise<boolean>}
+     */
+    sendSeen(contact) {
+        return Work.works([
+            ['chat', w => this.client.getChatById(contact)],
+            ['send-seen', w => w.getRes('chat').sendSeen()],
         ]);
     }
 
@@ -695,6 +744,12 @@ class WAWeb {
         return Math.floor(Math.random() * (max - min)) + min;
     }
 
+    /**
+     * Is user directory has been marked for cleaning?
+     *
+     * @param {string} dir User directory
+     * @returns {boolean}
+     */
     static isClean(dir) {
         if (this.locks === undefined) {
             this.locks = [];
@@ -705,6 +760,9 @@ class WAWeb {
         this.locks.push(dir);
         return false;
     }
+
+    static get QUEUE_CHAT() { return 1 }
+    static get QUEUE_SEEN() { return 2 }
 }
 
 module.exports = WAWebChat;

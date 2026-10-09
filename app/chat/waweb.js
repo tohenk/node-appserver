@@ -48,6 +48,11 @@ class WAWebChat extends ChatConsumer {
     /** @type {WAWeb[]} */
     wawebs = []
 
+    /**
+     * Constructor.
+     *
+     * @param {object} config Configuration
+     */
     initialize(config) {
         this.id = 'wa';
         this.workdir = this.createWorkdir('.waweb');
@@ -82,12 +87,23 @@ class WAWebChat extends ChatConsumer {
         }
     }
 
+    /**
+     * Create working directory.
+     *
+     * @param {string} dir Working directory
+     * @returns {string}
+     */
     createWorkdir(dir) {
         const workdir = path.join(this.parent.config.workdir, dir);
         fs.mkdirSync(workdir, {recursive: true});
         return workdir;
     }
 
+    /**
+     * Update WAWeb client state.
+     *
+     * @returns {void}
+     */
     updateState() {
         let cnt = 0;
         for (const waweb of this.wawebs) {
@@ -132,6 +148,11 @@ class WAWebChat extends ChatConsumer {
         return handler[idx].canConsume(msg, flags);
     }
 
+    /**
+     * Get WAWeb client state data.
+     *
+     * @returns {object}
+     */
     getState() {
         const state = [];
         for (const waweb of this.wawebs) {
@@ -140,6 +161,12 @@ class WAWebChat extends ChatConsumer {
         return state;
     }
 
+    /**
+     * Set WAWeb client state data.
+     *
+     * @param {object} state State data
+     * @returns {void}
+     */
     setState(state) {
         if (Array.isArray(state)) {
             for (let i = 0; i < state.length; i++) {
@@ -150,6 +177,11 @@ class WAWebChat extends ChatConsumer {
         }
     }
 
+    /**
+     * Close all WAWeb client instances.
+     *
+     * @returns {Promise<undefined>}
+     */
     close() {
         return new Promise((resolve, reject) => {
             const q = new Queue([...this.wawebs], waweb => {
@@ -188,6 +220,11 @@ class WAWeb {
     /** @type {import('../bridge/chat')} */
     parent = null
 
+    /**
+     * Constructor.
+     *
+     * @param {object} config Configuration
+     */
     constructor(config) {
         this.name = config.name;
         this.parent = config.parent;
@@ -229,18 +266,22 @@ class WAWeb {
                 if (typeof config.onState === 'function') {
                     config.onState(this);
                 }
+                this.showStats();
             })
             .on(Events.QR_RECEIVED, qr => {
-                if (this.isTime('qrnotify', this.qrinterval)) {
-                    console.log(`${this.name}: WhatsApp Web QR Code needed (${new Date()})!`);
-                    const qrcode = require('qrcode-terminal');
-                    qrcode.generate(qr, {small: true});
-                    if (config.admin && this.qrcount++ < this.qrretry) {
-                        const message = `${this.name}: WhatsApp Web requires QR Code authentication: ${qr}`;
-                        const hash = this.getHash(time, config.admin, message);
-                        this.parent.queue.requeue([{hash, number: config.admin, message, consumer: 'sms'}]);
+                const qrcode = require('qrcode-terminal');
+                qrcode.generate(qr, {small: true}, code => {
+                    const qrfilename = path.join(this.workdir, `qr-${this.name}.txt`);
+                    fs.writeFileSync(qrfilename, code);
+                    if (this.isTime('qrnotify', this.qrinterval)) {
+                        console.log(`${this.name}: WhatsApp Web QR Code needed (${new Date()})!`);
+                        if (config.admin && this.qrcount++ < this.qrretry) {
+                            const message = `${this.name}: WhatsApp Web requires QR Code authentication: ${qr}`;
+                            const hash = this.getHash(time, config.admin, message);
+                            this.parent.queue.requeue([{hash, number: config.admin, message, consumer: 'sms'}]);
+                        }
                     }
-                }
+                });
             })
             .on(Events.AUTHENTICATED, () => {
                 console.log(`${this.name}: WhatsApp Web is authenticated...`);
@@ -297,12 +338,18 @@ class WAWeb {
                         this.parent.getApp().log(`${this.name}: WAW: Message ack %s`, JSON.stringify(data));
                         this.parent.onReport(data);
                         delete this.messages[msg.id.id];
+                        this.incrementStat(WAWeb.STAT_MSG_ACK);
                     }
                 }
             });
         this.createQueue();
     }
 
+    /**
+     * Initialize client.
+     *
+     * @returns {Promise<undefined>}
+     */
     initialize() {
         return Work.works([
             [w => Promise.resolve(console.log(`${this.name}: WhatsApp Web is initializing...`))],
@@ -312,6 +359,11 @@ class WAWeb {
         ]);
     }
 
+    /**
+     * Clean WAWeb user authentication lock.
+     *
+     * @returns {void}
+     */
     userDataCleanupPatch() {
         const authStrategy = this.client.authStrategy;
         if (authStrategy._beforeBrowserInitialized === undefined) {
@@ -337,6 +389,11 @@ class WAWeb {
         }
     }
 
+    /**
+     * Send seen to all unseen chats.
+     *
+     * @returns {void}
+     */
     sendAllSeen() {
         this.client.on(Events.READY, () => {
             Work.works([
@@ -368,6 +425,8 @@ class WAWeb {
 
     /**
      * Create queue dispatcher.
+     *
+     * @returns {void}
      */
     createQueue() {
         const interval = () => {
@@ -440,6 +499,11 @@ class WAWeb {
         return queue;
     }
 
+    /**
+     * Get state data.
+     *
+     * @returns {object}
+     */
     getState() {
         return {
             messages: {...this.messages},
@@ -447,6 +511,12 @@ class WAWeb {
         }
     }
 
+    /**
+     * Set state data.
+     *
+     * @param {object} state State data
+     * @returns {void}
+     */
     setState(state) {
         if (state.messages && Object.keys(state.messages).length) {
             this.messages = {...state.messages};
@@ -469,6 +539,7 @@ class WAWeb {
         const data = {date: time, number, message, hash};
         this.parent.getApp().log(`${this.name}: WAW: New message %s`, JSON.stringify(data));
         this.parent.onMessage(data);
+        this.incrementStat(WAWeb.STAT_MSG_RECV);
     }
 
     /**
@@ -493,7 +564,13 @@ class WAWeb {
         ]);
     }
 
+    /**
+     * Close WAWeb instance.
+     *
+     * @returns {Promise<undefined>}
+     */
     close() {
+        this.showStats();
         if (this.client && this.client.pupBrowser) {
             return this.client.destroy();
         }
@@ -547,6 +624,8 @@ class WAWeb {
             ['send', w => this.sendMsg(contact, msg, {...options, info: w.getRes('eula') ? this.eula : null, typing: w.getRes('chat')})],
             // save eula send state
             ['save', w => Promise.resolve(this.terms.add(this.getContactNumber(contact))), w => w.getRes('send') && w.getRes('eula')],
+            // increment counter
+            ['counter', w => Promise.resolve(this.incrementStat(WAWeb.STAT_MSG_SENT)), w => w.getRes('send')],
             // done
             ['resolve', w => Promise.resolve(w.getRes('send') ? true : false)],
         ]);
@@ -598,7 +677,9 @@ class WAWeb {
     sendSeen(contact) {
         return Work.works([
             ['chat', w => this.client.getChatById(contact)],
-            ['send-seen', w => w.getRes('chat').sendSeen()],
+            ['seen', w => w.getRes('chat').sendSeen()],
+            ['counter', w => Promise.resolve(this.incrementStat(WAWeb.STAT_SEEN)), w => w.getRes('seen')],
+            ['resolve', w => Promise.resolve(w.getRes('seen') ? true : false)],
         ]);
     }
 
@@ -749,6 +830,53 @@ class WAWeb {
     }
 
     /**
+     * Increment stat counter.
+     *
+     * @param {number} id Stat id
+     * @returns {WAWeb}
+     */
+    incrementStat(id) {
+        if (this.stats === undefined) {
+            this.stats = {};
+        }
+        if (this.stats[id] === undefined) {
+            this.stats[id] = 0;
+        }
+        this.stats[id]++;
+        return this;
+    }
+
+    /**
+     * Show stat summary.
+     *
+     * @param {boolean} reset Do reset
+     * @returns {WAWeb}
+     */
+    showStats(reset = true) {
+        if (this.stats !== undefined) {
+            const count = Object.values(this.stats).reduce((a, b) => a += b, 0);
+            if (count) {
+                const labels = [
+                    [WAWeb.STAT_MSG_SENT, 'Total message sent'],
+                    [WAWeb.STAT_MSG_RECV, 'Total message received'],
+                    [WAWeb.STAT_MSG_ACK, 'Total message ack'],
+                    [WAWeb.STAT_SEEN, 'Total seen sent'],
+                ];
+                console.log(`Summary of ${this.constructor.name} ${this.name}`);
+                for (const [id, label] of labels) {
+                    if (this.stats[id] !== undefined) {
+                        console.log(`${label}: ${this.stats[id]}`);
+                    }
+                }
+            }
+            if (reset) {
+                delete this.stats;
+            }
+        }
+        return this;
+    }
+
+    /**
      * Is user directory has been marked for cleaning?
      *
      * @param {string} dir User directory
@@ -767,6 +895,11 @@ class WAWeb {
 
     static get QUEUE_CHAT() { return 1 }
     static get QUEUE_SEEN() { return 2 }
+
+    static get STAT_MSG_SENT() { return 1 }
+    static get STAT_MSG_RECV() { return 2 }
+    static get STAT_MSG_ACK() { return 3 }
+    static get STAT_SEEN() { return 4 }
 }
 
 module.exports = WAWebChat;

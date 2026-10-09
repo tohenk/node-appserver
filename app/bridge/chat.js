@@ -90,7 +90,14 @@ class ChatBridge extends Bridge {
     }
 
     onFinalize() {
-        this.saveQueue();
+        try {
+            this.saveQueue();
+            for (const consumer of this.consumers) {
+                consumer.close();
+            }
+        } catch (err) {
+            console.error(err);
+        }
     }
 
     /**

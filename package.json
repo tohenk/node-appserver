@@ -11,16 +11,16 @@
     "xmpp"
   ],
   "dependencies": {
-    "@ntlab/ntlib": "^2.10.0",
+    "@ntlab/ntlib": "^3.1.2",
     "@ntlab/urllib": "^1.1.0",
-    "@ntlab/work": "^2.8.2",
+    "@ntlab/work": "^2.9.0",
     "@xmpp/client": "^0.13.6",
     "debug": "^4.4.3",
     "jszip": "^3.10.1",
     "mime-types": "^3.0.2",
     "qrcode-terminal": "^0.12.0",
-    "socket.io": "^4.8.3",
-    "socket.io-client": "^4.8.3",
+    "socket.io": "^4.8.4",
+    "socket.io-client": "^4.8.4",
     "whatsapp-web.js": "github:wwebjs/whatsapp-web.js#main"
   }
 }

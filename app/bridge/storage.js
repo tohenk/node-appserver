@@ -217,14 +217,15 @@ class StorageBridge extends Bridge {
                     const result = [];
                     let count = 0;
                     for await (const file of files) {
-                        const filename = path.join(targetdir, file.name);
-                        if (!fs.existsSync(filename)) {
+                        const filename = path.basename(file.name);
+                        const filepath = path.join(targetdir, filename);
+                        if (!fs.existsSync(filepath)) {
                             const buffer = await file.async('nodebuffer');
-                            fs.writeFileSync(filename, buffer);
+                            fs.writeFileSync(filepath, buffer);
                             result.push({
-                                name: file.name,
+                                name: filename,
                                 mime: mimeTypes.lookup(filename),
-                                size: fs.statSync(filename).size
+                                size: fs.statSync(filepath).size
                             });
                         }
                         count++;

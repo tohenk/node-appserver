@@ -29,8 +29,8 @@ const Work = require('@ntlab/work/work');
 const Queue = require('@ntlab/work/queue');
 const Util = require('../lib/util');
 const { ChatConsumer } = require('.');
-const { ChatStorage } = require('./storage');
-const { Client, Chat, Events, LocalAuth, Message, MessageAck, MessageMedia } = require('whatsapp-web.js');
+const { ChatStorage, ChatContact } = require('./storage');
+const { Client, Chat, Contact, Events, LocalAuth, Message, MessageAck, MessageMedia } = require('whatsapp-web.js');
 
 /**
  * @typedef {Object} Attachment
@@ -127,19 +127,14 @@ class WAWebChat extends ChatConsumer {
         // if message is a special type, check for handler which can accept it
         if (flags.type) {
             handler = this.wawebs
-                .filter(waweb => waweb.connected &&
-                    (
-                        (Array.isArray(waweb.accept) && waweb.accept.includes(flags.type)) ||
-                        waweb.accept === flags.type
-                    )
-                );
+                .filter(waweb => waweb.isReady() && waweb.accept.includes(flags.type));
             if (!handler.length) {
                 handler = undefined;
             }
         }
         // fallback to wildcard handler
         if (!handler) {
-            handler = this.wawebs.filter(waweb => waweb.connected && waweb.accept === undefined);
+            handler = this.wawebs.filter(waweb => waweb.isReady() && waweb.accept.length === 0);
         }
         if (!handler.length) {
             return Promise.resolve(false);
@@ -226,12 +221,19 @@ class WAWeb {
      * @param {object} config Configuration
      */
     constructor(config) {
+        /** @type {string} */
         this.name = config.name;
+        /** @type {import('../bridge/chat')} */
         this.parent = config.parent;
+        /** @type {ChatStorage} */
         this.storage = config.storage;
+        /** @type {ChatContact} */
         this.numbers = this.storage.get(this.STOR_WA_NUMBERS);
+        /** @type {string} */
         this.workdir = config.workdir;
-        this.accept = config.accept;
+        /** @type {string[]} */
+        this.accept = config.accept ?
+            (Array.isArray(config.accept) ? config.accept : [config.accept]) : [];
         /** @type {string} */
         this.eula = config.eula !== undefined ? config.eula :
             'To improve user experience for our services, we will send the message through this channel.\nReply with *YES* to agree.';
@@ -307,11 +309,7 @@ class WAWeb {
                 Work.works([
                     ['contact', w => msg.getContact()],
                     ['notify', w => Promise.resolve(this.notifyNewMessage(w.getRes('contact').number, msg.body)), w => msg.body],
-                    ['seen', w => Promise.resolve(this.addQueue(
-                        WAWeb.QUEUE_SEEN,
-                        [w.getRes('contact').id._serialized],
-                        (err) => console.log(`${this.name}: Set seen for message ${msg.id._serialized} is ${err ? 'failed' : 'success'}!`)
-                    ))],
+                    ['seen', w => Promise.resolve(this.addSeenQueue(w.getRes('contact')))],
                 ])
                 .catch(err => console.error(err));
             })
@@ -357,6 +355,15 @@ class WAWeb {
             [w => Promise.resolve(this.sendAllSeen()), w => this.allSeen],
             [w => this.client.initialize()],
         ]);
+    }
+
+    /**
+     * Is WAWeb ready for processing?
+     *
+     * @returns {boolean}
+     */
+    isReady() {
+        return this.connected && !this.qcool;
     }
 
     /**
@@ -408,7 +415,7 @@ class WAWeb {
                                 console.error(err);
                             }
                             if (res) {
-                                this.addQueue(WAWeb.QUEUE_SEEN, [res.id._serialized]);
+                                this.addSeenQueue(res);
                             }
                             q.next();
                         }
@@ -500,6 +507,30 @@ class WAWeb {
     }
 
     /**
+     * Add seen queue.
+     *
+     * @param {Contact} contact Contact
+     * @returns {boolean}
+     */
+    addSeenQueue(contact) {
+        return this.addQueue(WAWeb.QUEUE_SEEN, [contact.id._serialized],
+            (err) => console.log(`${this.name}: Set seen for contact ${contact.id._serialized} is ${err ? 'failed' : 'success'}!`));
+    }
+
+    /**
+     * Add chat queue.
+     *
+     * @param {Contact} contact Contact
+     * @param {import('../bridge/chat').ChatMessage} message Message
+     * @param {object} flags Send flags
+     * @returns {boolean}
+     */
+    addChatQueue(contact, message, flags) {
+        return this.addQueue(WAWeb.QUEUE_CHAT, [contact, message, flags],
+            (err) => console.log(`${this.name}: Send message ${message.data} (${message.address}) is ${err ? 'failed' : 'success'}!`));
+    }
+
+    /**
      * Get state data.
      *
      * @returns {object}
@@ -556,7 +587,7 @@ class WAWeb {
         const number = this.normalizeNumber(msg.address);
         return Work.works([
             ['contact', w => this.getWAContact(number)],
-            ['broadcast', w => Promise.resolve(this.addQueue(WAWeb.QUEUE_CHAT, [w.getRes('contact'), msg, flags])),
+            ['broadcast', w => Promise.resolve(this.addChatQueue(w.getRes('contact'), msg, flags)),
                 w => w.getRes('contact') && flags.broadcast],
             ['send', w => this.sendChat(w.getRes('contact'), msg, flags),
                 w => w.getRes('contact') && !flags.broadcast],

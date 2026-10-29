@@ -246,6 +246,7 @@ class WAWeb {
                 throw new Error('Delay only accept number or array of [min, max]!');
             }
         }
+        this.maxChat = config['max-chat'] || 0;
         this.delay = Util.ms(config.delay || [1, 2]); // 1-2 seconds
         this.qdelay = Util.ms(config['queue-delay'] || [60, 120]); // 1-2 minutes
         this.qcooldown = config['queue-cooldown']; // number of processed queues, last queue time delay, cooldown time
@@ -426,7 +427,7 @@ class WAWeb {
                     q.once('done', () => resolve());
                 })],
             ])
-            .catch(err => console.error(`Send all seen error: ${err}!`));
+            .catch(err => console.error(`${this.name}: Send all seen error: ${err}!`));
         });
     }
 
@@ -587,11 +588,12 @@ class WAWeb {
         const number = this.normalizeNumber(msg.address);
         return Work.works([
             ['contact', w => this.getWAContact(number)],
+            ['allowed', w => this.isChatAllowed(w.getRes('contact')), w => w.getRes('contact')],
             ['broadcast', w => Promise.resolve(this.addChatQueue(w.getRes('contact'), msg, flags)),
-                w => w.getRes('contact') && flags.broadcast],
+                w => w.getRes('allowed') && flags.broadcast],
             ['send', w => this.sendChat(w.getRes('contact'), msg, flags),
-                w => w.getRes('contact') && !flags.broadcast],
-            ['resolve', w => Promise.resolve(w.getRes('contact') ? true : false)],
+                w => w.getRes('allowed') && !flags.broadcast],
+            ['resolve', w => Promise.resolve(w.getRes('allowed') ? true : false)],
         ]);
     }
 
@@ -606,6 +608,56 @@ class WAWeb {
             return this.client.destroy();
         }
         return Promise.resolve();
+    }
+
+    /**
+     * Is chat to contact allowed? This will count the chats exist for current
+     * date and if maxChat is configured then chat is allowed if limit is not
+     * reached.
+     *
+     * @param {string} contact WA contact
+     * @returns {Promise<boolean>}
+     */
+    isChatAllowed(contact) {
+        if (this.maxChat > 0) {
+            const time = new Date();
+            let count = 0;
+            return Work.works([
+                [w => this.client.getChats()],
+                [w => new Promise((resolve, reject) => {
+                    /** @type {Chat[]} */
+                    const chats = [...w.getRes(0)];
+                    const q = new Queue(chats, chat => {
+                        Work.works([
+                            [x => chat.getContact()],
+                            [x => chat.fetchMessages({limit: 1, fromMe: true})],
+                            [x => Promise.resolve([
+                                x.getRes(1).length ? this.isDate(time, x.getRes(1)[0].timestamp * 1000) : false,
+                                x.getRes(0).id._serialized === contact,
+                            ])],
+                        ])
+                        .then(res => {
+                            const [success, exist] = res;
+                            if (success) {
+                                count++;
+                            }
+                            if (exist || count >= this.maxChat) {
+                                q.done();
+                            } else {
+                                q.next();
+                            }
+                        })
+                        .catch(err => {
+                            console.error(err);
+                            q.next();
+                        });
+                    });
+                    q.once('done', () => resolve(count < this.maxChat));
+                })],
+            ]);
+        } else {
+            return Promise.resolve(true);
+        }
     }
 
     /**
@@ -905,6 +957,28 @@ class WAWeb {
             }
         }
         return this;
+    }
+
+    /**
+     * Is date equal in desired date format, default to year, month, and day?
+     *
+     * @param {Date|number} date1 First date
+     * @param {Date|number} date2 Second date
+     * @param {string} format Date format for equally check
+     * @returns {boolean}
+     */
+    isDate(date1, date2, format = 'yyyyMMdd') {
+        if (typeof date1 === 'number') {
+            date1 = new Date(date1);
+        }
+        if (typeof date2 === 'number') {
+            date2 = new Date(date2);
+        }
+        if (date1 instanceof Date && date2 instanceof Date) {
+            const u = require('@ntlab/ntlib/util');
+            return u.formatDate(date1, format) === u.formatDate(date2, format);
+        }
+        return false;
     }
 
     /**
